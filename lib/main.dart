@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 // import 'package:firebase_core/firebase_core.dart'; // Temporarily disabled
 // import 'firebase_options.dart'; // Temporarily disabled
+import 'utils/app_config.dart';
 import 'viewmodels/auth_view_model.dart';
 import 'viewmodels/cart_view_model.dart';
 import 'viewmodels/address_view_model.dart';
@@ -11,9 +12,19 @@ import 'views/home/home_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // await Firebase.initializeApp( // Temporarily disabled
-  //   options: DefaultFirebaseOptions.currentPlatform,
-  // );
+  
+  // 앱 설정 정보 출력 (디버그용)
+  AppConfig.printConfig();
+  
+  // Firebase 초기화 (활성화된 경우에만)
+  if (AppConfig.isFirebaseEnabled) {
+    // TODO: Firebase 패키지가 활성화되면 초기화 코드 추가
+    // await Firebase.initializeApp(
+    //   options: DefaultFirebaseOptions.currentPlatform,
+    // );
+    print('Firebase 초기화가 예정되어 있지만 패키지가 아직 설치되지 않았습니다.');
+  }
+  
   runApp(const RaouApp());
 }
 

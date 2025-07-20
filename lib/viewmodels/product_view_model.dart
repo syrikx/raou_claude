@@ -96,25 +96,44 @@ class ProductViewModel extends BaseViewModel {
     await handleAsyncOperation(() async {
       await _webController!.runJavaScript('''
         (function() {
-          // 앱 설치 배너 숨기기
-          var appBanners = document.querySelectorAll('[class*="app"], [class*="banner"], [id*="app"], [id*="banner"]');
-          appBanners.forEach(function(banner) {
-            if (banner.textContent.includes('앱') || banner.textContent.includes('App')) {
-              banner.style.display = 'none';
-            }
-          });
-          
-          // 쿠팡 앱 다운로드 팝업 숨기기
-          var popups = document.querySelectorAll('.popup, .modal, .overlay');
-          popups.forEach(function(popup) {
-            popup.style.display = 'none';
-          });
-          
-          // 메타 태그에서 앱 관련 내용 제거
-          var metaTags = document.querySelectorAll('meta[content*="app"]');
-          metaTags.forEach(function(meta) {
-            meta.remove();
-          });
+          try {
+            console.log('Hiding app banners...');
+            
+            // 더 구체적인 선택자로 앱 배너만 타겟팅
+            var specificBanners = [
+              'div[class*="app-banner"]',
+              'div[class*="download-app"]', 
+              'div[id*="app-banner"]',
+              'div[class*="mobile-app"]',
+              '.smart-banner',
+              '.app-banner',
+              '.download-banner'
+            ];
+            
+            specificBanners.forEach(function(selector) {
+              var elements = document.querySelectorAll(selector);
+              elements.forEach(function(el) {
+                console.log('Hiding element:', el.className);
+                el.style.display = 'none';
+              });
+            });
+            
+            // 텍스트 내용으로 앱 다운로드 관련 요소 찾기 (더 안전하게)
+            var textElements = document.querySelectorAll('div, span, a');
+            textElements.forEach(function(el) {
+              var text = el.textContent || '';
+              if ((text.includes('앱 다운로드') || text.includes('앱으로 보기') || 
+                   text.includes('App Store') || text.includes('Play Store')) &&
+                  el.offsetHeight < 200) { // 너무 큰 요소는 제외
+                console.log('Hiding app download element:', text.substring(0, 50));
+                el.style.display = 'none';
+              }
+            });
+            
+            console.log('App banner hiding completed');
+          } catch (error) {
+            console.error('Error hiding app banners:', error);
+          }
         })();
       ''');
     });

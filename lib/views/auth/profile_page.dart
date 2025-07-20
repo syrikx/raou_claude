@@ -88,35 +88,89 @@ class SignInView extends StatelessWidget {
             const SizedBox(height: 32),
             Consumer<AuthViewModel>(
               builder: (context, authViewModel, child) {
-                return SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: authViewModel.isLoading
-                        ? null
-                        : () => _signInWithGoogle(context),
-                    icon: authViewModel.isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Image.asset(
-                            'assets/google_logo.png',
-                            width: 20,
-                            height: 20,
-                            errorBuilder: (context, error, stackTrace) =>
-                                const Icon(Icons.login),
+                return Column(
+                  children: [
+                    // Google Sign-In 버튼
+                    if (authViewModel.isGoogleSignInAvailable) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: authViewModel.isLoading
+                              ? null
+                              : () => _signInWithGoogle(context),
+                          icon: authViewModel.isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.login, color: Colors.red),
+                          label: Text(
+                            authViewModel.isLoading ? 'Signing in...' : 'Sign in with Google',
                           ),
-                    label: Text(
-                      authViewModel.isLoading ? 'Signing in...' : 'Sign in with Google',
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.black87,
+                            side: const BorderSide(color: Colors.grey),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    
+                    // Apple Sign-In 버튼 (iOS만)
+                    if (authViewModel.isAppleSignInAvailable) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: authViewModel.isLoading
+                              ? null
+                              : () => _signInWithApple(context),
+                          icon: const Icon(Icons.apple, color: Colors.white),
+                          label: const Text('Sign in with Apple'),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            backgroundColor: Colors.black,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    
+                    // 테스트 로그인 버튼 (개발용)
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: authViewModel.isLoading
+                            ? null
+                            : () => _signInAsMockUser(context),
+                        icon: const Icon(Icons.person),
+                        label: const Text('Test Login (Mock User)'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
                     ),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black87,
-                      side: const BorderSide(color: Colors.grey),
+                    
+                    // Firebase 상태 표시
+                    const SizedBox(height: 16),
+                    Text(
+                      authViewModel.isFirebaseAvailable 
+                          ? 'Firebase Auth: Enabled' 
+                          : 'Firebase Auth: Disabled (Mock Mode)',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: authViewModel.isFirebaseAvailable 
+                            ? Colors.green 
+                            : Colors.orange,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
+                  ],
                 );
               },
             ),
@@ -144,6 +198,26 @@ class SignInView extends StatelessWidget {
       context.read<AddressViewModel>().loadAddresses();
       context.read<OrderViewModel>().loadOrders();
     }
+  }
+
+  Future<void> _signInWithApple(BuildContext context) async {
+    final authViewModel = context.read<AuthViewModel>();
+    final success = await authViewModel.signInWithApple(context);
+    
+    if (success) {
+      // Load user data after sign in
+      context.read<AddressViewModel>().loadAddresses();
+      context.read<OrderViewModel>().loadOrders();
+    }
+  }
+
+  Future<void> _signInAsMockUser(BuildContext context) async {
+    final authViewModel = context.read<AuthViewModel>();
+    await authViewModel.signInAsMockUser(context);
+    
+    // Load user data after sign in (mock data will be empty)
+    context.read<AddressViewModel>().loadAddresses();
+    context.read<OrderViewModel>().loadOrders();
   }
 }
 
@@ -371,7 +445,7 @@ class ProfileMenuSection extends StatelessWidget {
           ),
           TextButton(
             onPressed: () {
-              context.read<AuthViewModel>().signOut();
+              context.read<AuthViewModel>().signOut(context);
               Navigator.pop(context);
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),

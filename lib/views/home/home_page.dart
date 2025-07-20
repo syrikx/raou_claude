@@ -35,16 +35,43 @@ class _HomePageState extends State<HomePage> {
     if (!kIsWeb) {
       _webViewController = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1')
         ..setNavigationDelegate(
           NavigationDelegate(
+            onPageStarted: (String url) {
+              print('WebView started loading: $url');
+            },
             onPageFinished: (String url) {
+              print('WebView finished loading: $url');
               if (mounted) {
-                context.read<ProductViewModel>().hideAppBanner();
+                // 임시로 hideAppBanner 비활성화 (디버깅용)
+                // Future.delayed(const Duration(milliseconds: 1500), () {
+                //   if (mounted) {
+                //     context.read<ProductViewModel>().hideAppBanner();
+                //   }
+                // });
               }
+            },
+            onWebResourceError: (WebResourceError error) {
+              print('WebView error: ${error.description}');
+            },
+            onNavigationRequest: (NavigationRequest request) {
+              print('Navigation request: ${request.url}');
+              
+              // 앱 스토어나 외부 앱으로의 리디렉션 차단
+              if (request.url.contains('itunes.apple.com') || 
+                  request.url.contains('apps.apple.com') ||
+                  request.url.contains('coupang://') ||
+                  request.url.startsWith('app-')) {
+                print('Blocking navigation to: ${request.url}');
+                return NavigationDecision.prevent;
+              }
+              
+              return NavigationDecision.navigate;
             },
           ),
         )
-        ..loadRequest(Uri.parse('https://www.coupang.com'));
+        ..loadRequest(Uri.parse('https://m.coupang.com')); // 모바일 버전 사용
 
       // Schedule the setWebController call for after the current build frame
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -264,9 +291,11 @@ class OrderTabContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           const Icon(
             Icons.add_shopping_cart,
