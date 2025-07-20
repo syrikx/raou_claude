@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/user.dart';
 import '../utils/app_config.dart';
 import 'base_view_model.dart';
@@ -6,6 +9,9 @@ import 'base_view_model.dart';
 class AuthViewModel extends BaseViewModel {
   User? _currentUser;
   bool _isAuthenticated = false;
+  
+  // Google Sign-In 인스턴스 (단순화)
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   User? get currentUser => _currentUser;
   bool get isAuthenticated => _isAuthenticated;
@@ -23,9 +29,25 @@ class AuthViewModel extends BaseViewModel {
     // Firebase가 활성화된 경우에만 실행
     if (!AppConfig.isFirebaseEnabled) return;
     
-    // TODO: Firebase 초기화 코드
-    // _checkAuthState();
-    print('Firebase Auth가 활성화되었지만 패키지가 아직 설치되지 않았습니다.');
+    // Firebase Auth 상태 변화 감지
+    firebase_auth.FirebaseAuth.instance.authStateChanges().listen((firebase_auth.User? user) {
+      if (user != null) {
+        _currentUser = User(
+          id: user.uid,
+          email: user.email ?? '',
+          name: user.displayName ?? 'Firebase User',
+          profileImageUrl: user.photoURL,
+          joinedAt: DateTime.now(),
+        );
+        _isAuthenticated = true;
+      } else {
+        _currentUser = null;
+        _isAuthenticated = false;
+      }
+      notifyListeners();
+    });
+    
+    print('Firebase Auth가 초기화되었습니다.');
   }
 
   void _setupMockAuth() {
@@ -41,10 +63,69 @@ class AuthViewModel extends BaseViewModel {
     }
 
     return await handleAsyncOperation(() async {
-      // TODO: 실제 Google Sign-In 구현
-      // Firebase 패키지가 활성화되면 이 부분을 구현
-      _showComingSoonMessage(context, 'Google Sign-In');
-      return false;
+      try {
+        print('Google Sign-In 시작...');
+        
+        // Google Sign-In 시작 (간단하게)
+        final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+        print('Google Sign-In 결과: $googleUser');
+        
+        if (googleUser == null) {
+          // 사용자가 취소한 경우
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Google 로그인이 취소되었습니다.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return false;
+        }
+
+        // 사용자 정보 생성
+        _currentUser = User(
+          id: googleUser.id,
+          email: googleUser.email,
+          name: googleUser.displayName ?? 'Google User',
+          profileImageUrl: googleUser.photoUrl,
+          joinedAt: DateTime.now(),
+        );
+        
+        _isAuthenticated = true;
+        notifyListeners();
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${_currentUser!.name}님, 환영합니다!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+
+        return true;
+      } catch (error) {
+        print('Google Sign-In error: $error');
+        
+        if (context.mounted) {
+          String errorMessage = 'Google 로그인 중 오류가 발생했습니다.';
+          if (error.toString().contains('network_error')) {
+            errorMessage = '네트워크 연결을 확인해주세요.';
+          } else if (error.toString().contains('sign_in_canceled')) {
+            errorMessage = 'Google 로그인이 취소되었습니다.';
+          }
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        
+        return false;
+      }
     }) ?? false;
   }
 
@@ -56,10 +137,95 @@ class AuthViewModel extends BaseViewModel {
     }
 
     return await handleAsyncOperation(() async {
-      // TODO: 실제 Apple Sign-In 구현
-      _showComingSoonMessage(context, 'Apple Sign-In');
-      return false;
+      try {
+        // Apple Sign-In 가능 여부 확인
+        final bool isAvailable = await SignInWithApple.isAvailable();
+        if (!isAvailable) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Sign in with Apple이 이 기기에서 지원되지 않습니다. Mock 로그인을 사용합니다.'),
+                backgroundColor: Colors.orange,
+                action: SnackBarAction(
+                  label: 'Mock 로그인',
+                  onPressed: () => _signInWithMockApple(context),
+                ),
+              ),
+            );
+          }
+          return false;
+        }
+
+        // Apple Sign-In 요청
+        final credential = await SignInWithApple.getAppleIDCredential(
+          scopes: [
+            AppleIDAuthorizationScopes.email,
+            AppleIDAuthorizationScopes.fullName,
+          ],
+        );
+
+        // 사용자 정보 생성
+        final String name = _formatAppleName(
+          credential.givenName,
+          credential.familyName,
+        );
+        
+        _currentUser = User(
+          id: credential.userIdentifier ?? DateTime.now().millisecondsSinceEpoch.toString(),
+          email: credential.email ?? 'apple_user@private.com',
+          name: name.isNotEmpty ? name : 'Apple User',
+          joinedAt: DateTime.now(),
+        );
+        
+        _isAuthenticated = true;
+        notifyListeners();
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${_currentUser!.name}님, 환영합니다!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+
+        return true;
+      } catch (error) {
+        print('Apple Sign-In error: $error');
+        
+        if (context.mounted) {
+          String errorMessage = 'Apple Sign-In 중 오류가 발생했습니다.';
+          if (error.toString().contains('canceled')) {
+            errorMessage = 'Apple Sign-In이 취소되었습니다.';
+          }
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        
+        return false;
+      }
     }) ?? false;
+  }
+
+  // Apple 이름 포맷팅 헬퍼 메서드
+  String _formatAppleName(String? givenName, String? familyName) {
+    final given = givenName ?? '';
+    final family = familyName ?? '';
+    
+    if (given.isEmpty && family.isEmpty) {
+      return '';
+    } else if (given.isEmpty) {
+      return family;
+    } else if (family.isEmpty) {
+      return given;
+    } else {
+      return '$given $family';
+    }
   }
 
   // 이메일/비밀번호 로그인
@@ -82,21 +248,44 @@ class AuthViewModel extends BaseViewModel {
 
   // 로그아웃
   Future<void> signOut(BuildContext context) async {
-    if (!AppConfig.isFirebaseEnabled) {
-      _showFeatureDisabledMessage(context, 'Sign Out');
-      return;
-    }
-
     await handleAsyncOperation(() async {
-      // TODO: Firebase 로그아웃 구현
-      _currentUser = null;
-      _isAuthenticated = false;
-      notifyListeners();
-      
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('로그아웃되었습니다.')),
-        );
+      try {
+        // Google Sign-In 로그아웃
+        if (AppConfig.isGoogleSignInEnabled) {
+          await _googleSignIn.signOut();
+        }
+        
+        // TODO: Firebase 로그아웃 추가
+        // TODO: Apple Sign-In 로그아웃 추가 (필요시)
+        
+        _currentUser = null;
+        _isAuthenticated = false;
+        notifyListeners();
+        
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('로그아웃되었습니다.'),
+              backgroundColor: Colors.blue,
+            ),
+          );
+        }
+      } catch (error) {
+        print('Sign out error: $error');
+        
+        // 에러가 발생해도 로컬 상태는 초기화
+        _currentUser = null;
+        _isAuthenticated = false;
+        notifyListeners();
+        
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('로그아웃되었습니다.'),
+              backgroundColor: Colors.blue,
+            ),
+          );
+        }
       }
     });
   }
@@ -117,6 +306,29 @@ class AuthViewModel extends BaseViewModel {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('테스트 사용자로 로그인되었습니다.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    });
+  }
+
+  // Mock Apple Sign-In (개발용)
+  Future<void> _signInWithMockApple(BuildContext context) async {
+    await handleAsyncOperation(() async {
+      _currentUser = User(
+        id: 'apple_mock_user_456',
+        email: 'apple_user@privaterelay.appleid.com',
+        name: 'Apple User',
+        joinedAt: DateTime.now(),
+      );
+      _isAuthenticated = true;
+      notifyListeners();
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Apple Mock 사용자로 로그인되었습니다.'),
             backgroundColor: Colors.green,
           ),
         );

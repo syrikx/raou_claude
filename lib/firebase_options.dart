@@ -27,10 +27,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.macOS:
         return macos;
       case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return windows;
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
@@ -44,37 +41,46 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'your-web-api-key',
-    appId: '1:your-project:web:your-app-id',
-    messagingSenderId: 'your-sender-id',
-    projectId: 'your-project-id',
-    authDomain: 'your-project.firebaseapp.com',
-    storageBucket: 'your-project.appspot.com',
+    apiKey: 'AIzaSyCVcWsLJokXpQsHzyTwv3G25OuuPkIIN38',
+    appId: '1:664498886284:web:bd9aed2496bdeb9159cda9',
+    messagingSenderId: '664498886284',
+    projectId: 'raou-claude',
+    authDomain: 'raou-claude.firebaseapp.com',
+    storageBucket: 'raou-claude.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'your-android-api-key',
-    appId: '1:your-project:android:your-app-id',
-    messagingSenderId: 'your-sender-id',
-    projectId: 'your-project-id',
-    storageBucket: 'your-project.appspot.com',
+    apiKey: 'AIzaSyAVHW-hXZvKG23gZl9yNuDEq8Hkm8sSI1I',
+    appId: '1:664498886284:android:bd9aed2496bdeb9159cda9',
+    messagingSenderId: '664498886284',
+    projectId: 'raou-claude',
+    storageBucket: 'raou-claude.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'your-ios-api-key',
-    appId: '1:your-project:ios:your-app-id',
-    messagingSenderId: 'your-sender-id',
-    projectId: 'your-project-id',
-    storageBucket: 'your-project.appspot.com',
-    iosBundleId: 'com.example.mvvmApp',
+    apiKey: 'AIzaSyAVHW-hXZvKG23gZl9yNuDEq8Hkm8sSI1I',
+    appId: '1:664498886284:ios:bd9aed2496bdeb9159cda9',
+    messagingSenderId: '664498886284',
+    projectId: 'raou-claude',
+    storageBucket: 'raou-claude.firebasestorage.app',
+    iosBundleId: 'com.raou.claude.app',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'your-ios-api-key',
-    appId: '1:your-project:ios:your-app-id',
-    messagingSenderId: 'your-sender-id',
-    projectId: 'your-project-id',
-    storageBucket: 'your-project.appspot.com',
-    iosBundleId: 'com.example.mvvmApp',
+    apiKey: 'AIzaSyAVHW-hXZvKG23gZl9yNuDEq8Hkm8sSI1I',
+    appId: '1:664498886284:ios:bd9aed2496bdeb9159cda9',
+    messagingSenderId: '664498886284',
+    projectId: 'raou-claude',
+    storageBucket: 'raou-claude.firebasestorage.app',
+    iosBundleId: 'com.raou.claude.app',
+  );
+
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyCVcWsLJokXpQsHzyTwv3G25OuuPkIIN38',
+    appId: '1:664498886284:web:bd9aed2496bdeb9159cda9',
+    messagingSenderId: '664498886284',
+    projectId: 'raou-claude',
+    authDomain: 'raou-claude.firebaseapp.com',
+    storageBucket: 'raou-claude.firebasestorage.app',
   );
 }

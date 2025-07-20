@@ -10,13 +10,13 @@ class AppConfig {
   // Google Sign-In 기능 활성화 여부
   static const bool enableGoogleSignIn = bool.fromEnvironment(
     'ENABLE_GOOGLE_SIGNIN',
-    defaultValue: false,
+    defaultValue: true, // Firebase 연동으로 다시 활성화
   );
   
   // Apple Sign-In 기능 활성화 여부
   static const bool enableAppleSignIn = bool.fromEnvironment(
     'ENABLE_APPLE_SIGNIN',
-    defaultValue: false,
+    defaultValue: true, // Apple Sign-In 기본 활성화
   );
   
   // 개발 모드에서는 Firebase 기능을 활성화할지 여부
@@ -38,12 +38,12 @@ class AppConfig {
   
   // Google Sign-In 사용 가능 여부
   static bool get isGoogleSignInEnabled {
-    return isFirebaseEnabled && enableGoogleSignIn;
+    return enableGoogleSignIn; // Firebase 종속성 제거
   }
   
   // Apple Sign-In 사용 가능 여부  
   static bool get isAppleSignInEnabled {
-    return isFirebaseEnabled && enableAppleSignIn;
+    return enableAppleSignIn; // Firebase 종속성 제거
   }
   
   // 환경 설정 정보 출력 (디버그용)

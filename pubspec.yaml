@@ -38,13 +38,14 @@ dependencies:
   # State management
   provider: ^6.1.2
   
-  # Firebase (temporarily disabled for iOS compatibility testing)
-  # firebase_core: 2.13.0
-  # firebase_auth: 4.6.3
-  # cloud_firestore: 4.7.1
+  # Firebase (최신 버전으로 업데이트하여 호환성 개선)
+  firebase_core: ^3.15.1
+  firebase_auth: ^5.6.2
+  cloud_firestore: ^5.6.11
   
-  # Authentication (temporarily disabled for iOS compatibility)
-  # google_sign_in: 6.1.4
+  # Authentication
+  google_sign_in: ^6.1.4
+  sign_in_with_apple: ^6.1.2
   
   # WebView
   webview_flutter: ^4.2.2
