@@ -5,6 +5,7 @@ import '../models/order.dart' as models;
 import '../models/cart_item.dart';
 import '../models/address.dart';
 import '../models/user.dart';
+import '../models/product.dart';
 import 'base_view_model.dart';
 
 class OrderViewModel extends BaseViewModel {
@@ -152,22 +153,20 @@ class OrderViewModel extends BaseViewModel {
       final tempUser = User(
         id: 'temp_user_id',
         email: 'temp@example.com',
-        displayName: '테스트 사용자',
-        photoUrl: null,
-        createdAt: DateTime.now(),
+        name: '테스트 사용자',
+        profileImageUrl: null,
+        joinedAt: DateTime.now(),
       );
       
       // 임시 배송 주소 (실제로는 AddressViewModel에서 가져옴)
       final tempAddress = Address(
         id: 'temp_address_id',
-        userId: 'temp_user_id',
-        recipientName: '테스트 사용자',
-        phoneNumber: '010-1234-5678',
-        address: '서울시 강남구',
-        detailAddress: '테스트 주소',
-        postalCode: '06000',
+        name: '테스트 사용자',
+        street: '테스트 주소',
+        city: '서울시',
+        state: '강남구',
+        zipCode: '06000',
         isDefault: true,
-        createdAt: DateTime.now(),
       );
       
       // ProductInfo를 CartItem으로 변환
@@ -211,19 +210,23 @@ class OrderViewModel extends BaseViewModel {
     // rawData에서 상품 정보 파싱 (실제로는 더 정교한 파싱 필요)
     final rawData = productInfo['rawData']?.toString() ?? '';
     
+    // 먼저 Product 객체 생성
+    final product = Product(
+      id: _uuid.v4(),
+      name: _extractValueFromRawData(rawData, 'name') ?? '쿠팡 상품',
+      description: '쿠팡에서 intercept된 상품',
+      price: _parsePrice(_extractValueFromRawData(rawData, 'price') ?? '0'),
+      imageUrl: _extractValueFromRawData(rawData, 'imageUrl') ?? '',
+      category: 'intercepted',
+      quantity: 1,
+      url: _extractValueFromRawData(rawData, 'url') ?? '',
+    );
+    
     return CartItem(
       id: _uuid.v4(),
-      productId: _uuid.v4(),
-      name: _extractValueFromRawData(rawData, 'name') ?? '쿠팡 상품',
-      price: _parsePrice(_extractValueFromRawData(rawData, 'price') ?? '0'),
+      product: product,
       quantity: 1,
-      imageUrl: _extractValueFromRawData(rawData, 'imageUrl'),
-      options: {
-        'seller': _extractValueFromRawData(rawData, 'seller') ?? '쿠팡',
-        'intercepted_from': 'coupang',
-        'original_url': _extractValueFromRawData(rawData, 'url') ?? '',
-        'intercept_timestamp': productInfo['timestamp']?.toString() ?? DateTime.now().toISOString(),
-      },
+      addedAt: DateTime.now(),
     );
   }
   
