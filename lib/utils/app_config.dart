@@ -4,7 +4,7 @@ class AppConfig {
   // Firebase 기능 활성화 여부
   static const bool enableFirebase = bool.fromEnvironment(
     'ENABLE_FIREBASE',
-    defaultValue: false, // 기본값: Firebase 비활성화
+    defaultValue: true, // 기본값: Firebase 활성화 (Release 버전에서도)
   );
   
   // Google Sign-In 기능 활성화 여부

@@ -17,11 +17,20 @@ class AuthViewModel extends BaseViewModel {
   bool get isAuthenticated => _isAuthenticated;
 
   AuthViewModel() {
-    if (AppConfig.isFirebaseEnabled) {
-      _initializeFirebaseAuth();
-    } else {
-      // Firebase 비활성화 시 기본 상태
-      _setupMockAuth();
+    _initializeAuth();
+  }
+  
+  void _initializeAuth() async {
+    try {
+      if (AppConfig.isFirebaseEnabled) {
+        _initializeFirebaseAuth();
+      } else {
+        // Firebase 비활성화 시 기본 상태
+        _setupMockAuth();
+      }
+    } catch (e) {
+      print('Auth 초기화 오류: $e');
+      _setupMockAuth(); // 오류 시 기본 인증으로 대체
     }
   }
 
@@ -106,15 +115,28 @@ class AuthViewModel extends BaseViewModel {
 
         return true;
       } catch (error) {
-        print('Google Sign-In error: $error');
+        print('🔴 Google Sign-In 상세 오류: $error');
+        print('🔴 오류 타입: ${error.runtimeType}');
+        print('🔴 오류 문자열: ${error.toString()}');
         
         if (context.mounted) {
           String errorMessage = 'Google 로그인 중 오류가 발생했습니다.';
-          if (error.toString().contains('network_error')) {
+          
+          // 다양한 오류 케이스 처리
+          final errorString = error.toString().toLowerCase();
+          if (errorString.contains('network_error') || errorString.contains('network')) {
             errorMessage = '네트워크 연결을 확인해주세요.';
-          } else if (error.toString().contains('sign_in_canceled')) {
+          } else if (errorString.contains('sign_in_canceled') || errorString.contains('cancelled')) {
             errorMessage = 'Google 로그인이 취소되었습니다.';
+          } else if (errorString.contains('sign_in_failed')) {
+            errorMessage = 'Google 로그인에 실패했습니다. 다시 시도해주세요.';
+          } else if (errorString.contains('invalid_client') || errorString.contains('oauth')) {
+            errorMessage = 'Google 인증 설정 오류입니다. 개발자에게 문의하세요.';
+          } else if (errorString.contains('permission') || errorString.contains('access')) {
+            errorMessage = 'Google 계정 접근 권한이 없습니다.';
           }
+          
+          print('🔴 사용자 표시 메시지: $errorMessage');
           
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
