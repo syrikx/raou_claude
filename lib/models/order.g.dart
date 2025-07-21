@@ -27,6 +27,8 @@ Order _$OrderFromJson(Map<String, dynamic> json) => Order(
           ? null
           : DateTime.parse(json['updatedAt'] as String),
   notes: json['notes'] as String?,
+  interceptedFrom: json['interceptedFrom'] as String?,
+  originalUrl: json['originalUrl'] as String?,
 );
 
 Map<String, dynamic> _$OrderToJson(Order instance) => <String, dynamic>{
@@ -40,6 +42,8 @@ Map<String, dynamic> _$OrderToJson(Order instance) => <String, dynamic>{
   'createdAt': instance.createdAt.toIso8601String(),
   'updatedAt': instance.updatedAt?.toIso8601String(),
   'notes': instance.notes,
+  'interceptedFrom': instance.interceptedFrom,
+  'originalUrl': instance.originalUrl,
 };
 
 const _$OrderStatusEnumMap = {
@@ -49,4 +53,5 @@ const _$OrderStatusEnumMap = {
   OrderStatus.shipped: 'shipped',
   OrderStatus.delivered: 'delivered',
   OrderStatus.cancelled: 'cancelled',
+  OrderStatus.intercepted: 'intercepted',
 };

@@ -11,7 +11,8 @@ enum OrderStatus {
   processing,
   shipped,
   delivered,
-  cancelled
+  cancelled,
+  intercepted // 쿠팡에서 intercept된 주문
 }
 
 @JsonSerializable()
@@ -26,6 +27,8 @@ class Order {
   final DateTime createdAt;
   final DateTime? updatedAt;
   final String? notes;
+  final String? interceptedFrom; // 어디서 intercept했는지 (예: 'coupang')
+  final String? originalUrl; // 원본 상품 URL
 
   const Order({
     required this.id,
@@ -38,6 +41,8 @@ class Order {
     required this.createdAt,
     this.updatedAt,
     this.notes,
+    this.interceptedFrom,
+    this.originalUrl,
   });
 
   factory Order.fromJson(Map<String, dynamic> json) => _$OrderFromJson(json);
@@ -94,6 +99,8 @@ class Order {
     DateTime? createdAt,
     DateTime? updatedAt,
     String? notes,
+    String? interceptedFrom,
+    String? originalUrl,
   }) {
     return Order(
       id: id ?? this.id,
@@ -106,6 +113,8 @@ class Order {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       notes: notes ?? this.notes,
+      interceptedFrom: interceptedFrom ?? this.interceptedFrom,
+      originalUrl: originalUrl ?? this.originalUrl,
     );
   }
 

@@ -139,4 +139,133 @@ class OrderViewModel extends BaseViewModel {
     _currentOrder = null;
     notifyListeners();
   }
+  
+  // 쿠팡에서 intercept된 주문 처리
+  Future<bool> createInterceptedOrder(Map<String, dynamic> productInfo) async {
+    try {
+      setLoading(true);
+      
+      print('📦 Intercept된 주문 생성 중...');
+      print('상품 정보: $productInfo');
+      
+      // 임시 사용자 정보 (실제로는 AuthViewModel에서 가져옴)
+      final tempUser = User(
+        id: 'temp_user_id',
+        email: 'temp@example.com',
+        displayName: '테스트 사용자',
+        photoUrl: null,
+        createdAt: DateTime.now(),
+      );
+      
+      // 임시 배송 주소 (실제로는 AddressViewModel에서 가져옴)
+      final tempAddress = Address(
+        id: 'temp_address_id',
+        userId: 'temp_user_id',
+        recipientName: '테스트 사용자',
+        phoneNumber: '010-1234-5678',
+        address: '서울시 강남구',
+        detailAddress: '테스트 주소',
+        postalCode: '06000',
+        isDefault: true,
+        createdAt: DateTime.now(),
+      );
+      
+      // ProductInfo를 CartItem으로 변환
+      final cartItem = _convertProductInfoToCartItem(productInfo);
+      
+      // Intercept된 주문 생성
+      final orderId = _uuid.v4();
+      final interceptedOrder = models.Order(
+        id: orderId,
+        user: tempUser,
+        items: [cartItem],
+        deliveryAddress: tempAddress,
+        totalAmount: cartItem.totalPrice,
+        deliveryFee: 0.0, // 쿠팡 무료배송 가정
+        status: models.OrderStatus.intercepted, // 새로운 상태 추가 필요
+        createdAt: DateTime.now(),
+        interceptedFrom: 'coupang', // 어디서 intercept했는지 추가 정보
+        originalUrl: productInfo['url']?.toString(),
+      );
+      
+      // 로컬 주문 목록에 추가 (Firebase 비활성화 상태이므로)
+      _orders.insert(0, interceptedOrder);
+      _currentOrder = interceptedOrder;
+      
+      print('✅ Intercept된 주문 생성 완료: ${orderId}');
+      
+      notifyListeners();
+      return true;
+      
+    } catch (e) {
+      print('❌ Intercept된 주문 생성 실패: $e');
+      setError('주문 생성 중 오류가 발생했습니다: $e');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }
+  
+  // ProductInfo를 CartItem으로 변환하는 헬퍼 메서드
+  CartItem _convertProductInfoToCartItem(Map<String, dynamic> productInfo) {
+    // rawData에서 상품 정보 파싱 (실제로는 더 정교한 파싱 필요)
+    final rawData = productInfo['rawData']?.toString() ?? '';
+    
+    return CartItem(
+      id: _uuid.v4(),
+      productId: _uuid.v4(),
+      name: _extractValueFromRawData(rawData, 'name') ?? '쿠팡 상품',
+      price: _parsePrice(_extractValueFromRawData(rawData, 'price') ?? '0'),
+      quantity: 1,
+      imageUrl: _extractValueFromRawData(rawData, 'imageUrl'),
+      options: {
+        'seller': _extractValueFromRawData(rawData, 'seller') ?? '쿠팡',
+        'intercepted_from': 'coupang',
+        'original_url': _extractValueFromRawData(rawData, 'url') ?? '',
+        'intercept_timestamp': productInfo['timestamp']?.toString() ?? DateTime.now().toISOString(),
+      },
+    );
+  }
+  
+  // rawData에서 특정 값을 추출하는 헬퍼 메서드
+  String? _extractValueFromRawData(String rawData, String key) {
+    try {
+      // 간단한 문자열 파싱 (실제로는 JSON 파싱이나 정규식 사용)
+      final pattern = RegExp('$key[:\s]*([^,}]+)');
+      final match = pattern.firstMatch(rawData);
+      return match?.group(1)?.trim().replaceAll('"', '');
+    } catch (e) {
+      print('⚠️ rawData 파싱 오류: $e');
+      return null;
+    }
+  }
+  
+  // 가격 문자열을 double로 변환
+  double _parsePrice(String priceStr) {
+    try {
+      // 가격에서 숫자만 추출 (예: "19,900원" -> 19900.0)
+      final numericStr = priceStr.replaceAll(RegExp(r'[^\d.]'), '');
+      return double.tryParse(numericStr) ?? 0.0;
+    } catch (e) {
+      print('⚠️ 가격 파싱 오류: $e');
+      return 0.0;
+    }
+  }
+  
+  // Intercept된 주문들만 필터링
+  List<models.Order> getInterceptedOrders() {
+    return _orders.where((order) => 
+      order.interceptedFrom != null && order.interceptedFrom!.isNotEmpty
+    ).toList();
+  }
+  
+  // Intercept된 주문 통계
+  int getInterceptedOrderCount() {
+    return getInterceptedOrders().length;
+  }
+  
+  double getTotalInterceptedAmount() {
+    return getInterceptedOrders()
+        .fold(0.0, (sum, order) => sum + order.finalAmount);
+  }
 }
