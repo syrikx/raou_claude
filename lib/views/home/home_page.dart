@@ -135,21 +135,22 @@ class _MyHomePageState extends State<MyHomePage> {
           body: Stack(
             children: [
               Positioned.fill(child: WebViewWidget(controller: controller)),
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: Consumer<CartViewModel>(
-                  builder: (context, cartViewModel, child) {
-                    return RaouNavigationBar(
-                      onHomePressed: onHomePressed,
-                      onCoupangPressed: onCoupangPressed,
-                      onOrderPressed: onOrderPressed,
-                      onCartPressed: onCartPressed,
-                      onProfilePressed: onProfilePressed,
-                      cartItemCount: cartViewModel.itemCount,
-                    );
-                  },
-                ),
-              ),
+              // DEACTIVATED: Navigation bar for debugging white screen issue
+              // Align(
+              //   alignment: Alignment.bottomCenter,
+              //   child: Consumer<CartViewModel>(
+              //     builder: (context, cartViewModel, child) {
+              //       return RaouNavigationBar(
+              //         onHomePressed: onHomePressed,
+              //         onCoupangPressed: onCoupangPressed,
+              //         onOrderPressed: onOrderPressed,
+              //         onCartPressed: onCartPressed,
+              //         onProfilePressed: onProfilePressed,
+              //         cartItemCount: cartViewModel.itemCount,
+              //       );
+              //     },
+              //   ),
+              // ),
             ],
           ),
         ),
