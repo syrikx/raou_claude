@@ -46,7 +46,23 @@ class _MyHomePageState extends State<MyHomePage> {
     controller.loadRequest(Uri.parse('https://www.coupang.com/'));
   }
 
-  void onOrderPressed() {
+  void onOrderPressed() async {
+    final result = await controller.runJavaScriptReturningResult("""
+      (() => {
+        const quantityDiv = document.querySelector('#MWEB_PRODUCT_DETAIL_ATF_QUANTITY');
+        if (quantityDiv) {
+          const bold = quantityDiv.querySelector('b');
+          if (bold && bold.innerText) return bold.innerText;
+        }
+        const priceInfoDiv = document.querySelector('#MWEB_PRODUCT_DETAIL_ATF_PRICE_INFO');
+        if (priceInfoDiv) {
+          const span = priceInfoDiv.querySelector('span[class^="PriceInfo_finalPrice"]');
+          if (span && span.innerText) return span.innerText;
+        }
+        return '가격 없음';
+      })()
+    """);
+    
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const OrderPage()),
@@ -82,22 +98,21 @@ class _MyHomePageState extends State<MyHomePage> {
           body: Stack(
             children: [
               Positioned.fill(child: WebViewWidget(controller: controller)),
-              // DEACTIVATED: Navigation bar for debugging white screen issue
-              // Align(
-              //   alignment: Alignment.bottomCenter,
-              //   child: Consumer<CartViewModel>(
-              //     builder: (context, cartViewModel, child) {
-              //       return RaouNavigationBar(
-              //         onHomePressed: onHomePressed,
-              //         onCoupangPressed: onCoupangPressed,
-              //         onOrderPressed: onOrderPressed,
-              //         onCartPressed: onCartPressed,
-              //         onProfilePressed: onProfilePressed,
-              //         cartItemCount: cartViewModel.itemCount,
-              //       );
-              //     },
-              //   ),
-              // ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Consumer<CartViewModel>(
+                  builder: (context, cartViewModel, child) {
+                    return RaouNavigationBar(
+                      onHomePressed: onHomePressed,
+                      onCoupangPressed: onCoupangPressed,
+                      onOrderPressed: onOrderPressed,
+                      onCartPressed: onCartPressed,
+                      onProfilePressed: onProfilePressed,
+                      cartItemCount: cartViewModel.itemCount,
+                    );
+                  },
+                ),
+              ),
             ],
           ),
         ),
