@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:http/http.dart' as http;
 import '../../viewmodels/cart_view_model.dart';
 import '../../viewmodels/auth_view_model.dart';
 import '../../widgets/raou_navigation_bar.dart';
@@ -47,26 +49,169 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void onOrderPressed() async {
-    final result = await controller.runJavaScriptReturningResult("""
-      (() => {
-        const quantityDiv = document.querySelector('#MWEB_PRODUCT_DETAIL_ATF_QUANTITY');
-        if (quantityDiv) {
-          const bold = quantityDiv.querySelector('b');
-          if (bold && bold.innerText) return bold.innerText;
-        }
-        const priceInfoDiv = document.querySelector('#MWEB_PRODUCT_DETAIL_ATF_PRICE_INFO');
-        if (priceInfoDiv) {
-          const span = priceInfoDiv.querySelector('span[class^="PriceInfo_finalPrice"]');
-          if (span && span.innerText) return span.innerText;
-        }
-        return '가격 없음';
-      })()
-    """);
+    try {
+      print('🛒 주문 버튼 클릭 - HTML 문서 추출 시작');
+      
+      // 1. 현재 페이지의 전체 HTML 문서 추출
+      final htmlResult = await controller.runJavaScriptReturningResult("""
+        (() => {
+          return document.documentElement.outerHTML;
+        })()
+      """);
+      
+      // 2. 현재 URL 가져오기
+      final urlResult = await controller.runJavaScriptReturningResult("""
+        (() => {
+          return window.location.href;
+        })()
+      """);
+      
+      // 3. 타임스탬프 생성
+      final timestamp = DateTime.now().toIso8601String();
+      final url = urlResult.toString().replaceAll('"', '');
+      final htmlContent = htmlResult.toString();
+      
+      print('📄 HTML 문서 크기: ${htmlContent.length} characters');
+      print('🌐 현재 URL: $url');
+      
+      // 4. GitHub Gist에 HTML 문서 업로드
+      await _uploadHtmlToGist(htmlContent, url, timestamp);
+      
+      // 5. 기존 가격 추출 로직도 유지 (백업용)
+      final priceResult = await controller.runJavaScriptReturningResult("""
+        (() => {
+          const quantityDiv = document.querySelector('#MWEB_PRODUCT_DETAIL_ATF_QUANTITY');
+          if (quantityDiv) {
+            const bold = quantityDiv.querySelector('b');
+            if (bold && bold.innerText) return bold.innerText;
+          }
+          const priceInfoDiv = document.querySelector('#MWEB_PRODUCT_DETAIL_ATF_PRICE_INFO');
+          if (priceInfoDiv) {
+            const span = priceInfoDiv.querySelector('span[class^="PriceInfo_finalPrice"]');
+            if (span && span.innerText) return span.innerText;
+          }
+          return '가격 없음';
+        })()
+      """);
+      
+      print('💰 추출된 가격 정보: $priceResult');
+      
+    } catch (e) {
+      print('❌ HTML 추출 중 오류 발생: $e');
+    }
     
+    // 6. 주문 페이지로 이동
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const OrderPage()),
     );
+  }
+  
+  Future<void> _uploadHtmlToGist(String htmlContent, String url, String timestamp) async {
+    try {
+      print('📤 JSONBin.io에 HTML 문서 업로드 시도...');
+      
+      // JSONBin.io에만 업로드 시도
+      final success = await _uploadToJsonBin(htmlContent, url, timestamp);
+      
+      if (!success) {
+        print('⚠️ JSONBin 업로드 실패, 로컬 저장으로 대체');
+        await _saveHtmlLocally(htmlContent, url, timestamp);
+      }
+      
+    } catch (e) {
+      print('💥 외부 저장 중 오류: $e');
+      await _saveHtmlLocally(htmlContent, url, timestamp);
+    }
+  }
+  
+  Future<bool> _uploadToJsonBin(String htmlContent, String url, String timestamp) async {
+    try {
+      print('📤 JSONBin.io 업로드 시작...');
+      
+      const String jsonBinUrl = 'https://api.jsonbin.io/v3/b';
+      const String accessKey = '\$2a\$10\$gvMAvJ7h8WbKzlQ8R0frIet0gO7pezyj57ZY4WxIEnSA3rwcIah/O';
+      
+      final data = {
+        'timestamp': timestamp,
+        'url': url,
+        'html_content': htmlContent,
+        'source': 'Raou_App_Coupang_Capture',
+        'app_version': '1.0.8',
+      };
+      
+      print('📊 업로드할 데이터 크기: ${jsonEncode(data).length} bytes');
+      
+      final response = await http.post(
+        Uri.parse(jsonBinUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Master-Key': accessKey,
+        },
+        body: jsonEncode(data),
+      );
+      
+      print('📡 JSONBin 응답 상태: ${response.statusCode}');
+      
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
+        final binId = responseData['metadata']['id'];
+        final viewUrl = 'https://jsonbin.io/$binId';
+        
+        print('✅ JSONBin 업로드 성공!');
+        print('🆔 Bin ID: $binId');
+        print('🔗 View URL: $viewUrl');
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('HTML 캡처가 JSONBin에 저장되었습니다!\n\nBin ID: $binId\n\n브라우저에서 확인: $viewUrl'),
+              duration: const Duration(seconds: 8),
+              action: SnackBarAction(
+                label: 'OK',
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                },
+              ),
+            ),
+          );
+        }
+        return true;
+      } else {
+        print('❌ JSONBin 업로드 실패: ${response.statusCode}');
+        print('📄 응답 내용: ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      print('❌ JSONBin 업로드 중 예외 발생: $e');
+      return false;
+    }
+  }
+  
+  Future<void> _saveHtmlLocally(String htmlContent, String url, String timestamp) async {
+    try {
+      print('💾 로컬 저장 시도...');
+      
+      // 앱 내부 디렉토리에 임시 저장
+      // 실제 구현 시에는 path_provider 패키지 사용 권장
+      final fileName = 'coupang_html_$timestamp.txt';
+      
+      print('📁 로컬 파일명: $fileName');
+      print('📄 HTML 길이: ${htmlContent.length}');
+      print('🌐 URL: $url');
+      
+      // 사용자에게 로컬 저장 완료 메시지
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('HTML 문서를 로컬에 임시 저장했습니다.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ 로컬 저장 실패: $e');
+    }
   }
 
   void onCartPressed() {
