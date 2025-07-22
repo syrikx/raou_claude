@@ -122,7 +122,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
+    return SafeArea(
+      child: WillPopScope(
         onWillPop: () async {
           if (await controller.canGoBack()) {
             controller.goBack();
@@ -131,15 +132,12 @@ class _MyHomePageState extends State<MyHomePage> {
           return true;
         },
         child: Scaffold(
-          backgroundColor: Colors.black,
           body: Stack(
             children: [
               Positioned.fill(child: WebViewWidget(controller: controller)),
               Align(
                 alignment: Alignment.bottomCenter,
-                child: SafeArea(
-                  top: false,
-                  child: Consumer<CartViewModel>(
+                child: Consumer<CartViewModel>(
                   builder: (context, cartViewModel, child) {
                     return RaouNavigationBar(
                       onHomePressed: onHomePressed,
@@ -150,12 +148,12 @@ class _MyHomePageState extends State<MyHomePage> {
                       cartItemCount: cartViewModel.itemCount,
                     );
                   },
-                  ),
                 ),
               ),
             ],
           ),
         ),
+      ),
     );
   }
 }
