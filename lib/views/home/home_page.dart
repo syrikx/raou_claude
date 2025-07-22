@@ -28,7 +28,7 @@ class _MyHomePageState extends State<MyHomePage> {
   void _initializeWebViewController() {
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0x00000000))
+      ..setBackgroundColor(Colors.white)
       ..setUserAgent('Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36')
       ..setNavigationDelegate(
         NavigationDelegate(
@@ -55,7 +55,7 @@ class _MyHomePageState extends State<MyHomePage> {
           },
         ),
       )
-      ..loadRequest(Uri.parse('https://raou.kr/'));
+      ..loadRequest(Uri.parse('https://www.coupang.com/'));
   }
 
   Future<void> _hideAppBanners() async {
@@ -92,7 +92,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   // 네비게이션 액션 메서드들
   void onHomePressed() {
-    controller.loadRequest(Uri.parse('https://raou.kr/'));
+    controller.loadRequest(Uri.parse('https://www.coupang.com/'));
   }
 
   void onCoupangPressed() {
@@ -132,6 +132,7 @@ class _MyHomePageState extends State<MyHomePage> {
           return true;
         },
         child: Scaffold(
+          backgroundColor: Colors.black,
           body: Stack(
             children: [
               Positioned.fill(child: WebViewWidget(controller: controller)),

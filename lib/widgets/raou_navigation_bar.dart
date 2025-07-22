@@ -28,7 +28,7 @@ class RaouNavigationBar extends StatelessWidget {
         final user = authViewModel.currentUser;
 
         return Container(
-          color: const Color(0xFF2C2C54),
+          color: const Color(0xFF2C2C54).withOpacity(0.9),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
