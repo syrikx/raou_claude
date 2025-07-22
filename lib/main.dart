@@ -141,7 +141,7 @@ class RaouApp extends StatelessWidget {
             builder: (context) {
               print('🏠 HomePage 생성 중...');
               try {
-                return const HomePage();
+                return const MyHomePage();
               } catch (e) {
                 print('❌ HomePage 생성 실패: $e');
                 return Scaffold(
