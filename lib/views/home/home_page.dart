@@ -109,13 +109,13 @@ class _MyHomePageState extends State<MyHomePage> {
   
   Future<void> _uploadHtmlToGist(String htmlContent, String url, String timestamp) async {
     try {
-      print('📤 JSONBin.io에 HTML 문서 업로드 시도...');
+      print('📤 커스텀 서버에 HTML 문서 업로드 시도...');
       
-      // JSONBin.io에만 업로드 시도
-      final success = await _uploadToJsonBin(htmlContent, url, timestamp);
+      // 커스텀 서버로 직접 POST 전송
+      final success = await _uploadToCustomServer(htmlContent, url, timestamp);
       
       if (!success) {
-        print('⚠️ JSONBin 업로드 실패, 로컬 저장으로 대체');
+        print('⚠️ 서버 업로드 실패, 로컬 저장으로 대체');
         await _saveHtmlLocally(htmlContent, url, timestamp);
       }
       
@@ -125,48 +125,60 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
   
-  Future<bool> _uploadToJsonBin(String htmlContent, String url, String timestamp) async {
+  Future<bool> _uploadToCustomServer(String htmlContent, String url, String timestamp) async {
     try {
-      print('📤 JSONBin.io 업로드 시작...');
+      print('📤 gunsiya.com 서버 업로드 시작...');
       
-      const String jsonBinUrl = 'https://api.jsonbin.io/v3/b';
-      const String accessKey = '\$2a\$10\$gvMAvJ7h8WbKzlQ8R0frIet0gO7pezyj57ZY4WxIEnSA3rwcIah/O';
+      const String serverUrl = 'https://gunsiya.com/raou/post_coupang';
       
       final data = {
         'timestamp': timestamp,
         'url': url,
         'html_content': htmlContent,
         'source': 'Raou_App_Coupang_Capture',
-        'app_version': '1.0.8',
+        'app_version': '1.1.0',
+        'user_agent': 'RaouApp/1.1.0 (Flutter)',
       };
       
       print('📊 업로드할 데이터 크기: ${jsonEncode(data).length} bytes');
+      print('🌐 대상 URL: $url');
+      print('⏰ 타임스탬프: $timestamp');
       
       final response = await http.post(
-        Uri.parse(jsonBinUrl),
+        Uri.parse(serverUrl),
         headers: {
           'Content-Type': 'application/json',
-          'X-Master-Key': accessKey,
+          'Accept': 'application/json',
+          'User-Agent': 'RaouApp/1.1.0 (Flutter)',
         },
         body: jsonEncode(data),
       );
       
-      print('📡 JSONBin 응답 상태: ${response.statusCode}');
+      print('📡 서버 응답 상태: ${response.statusCode}');
       
       if (response.statusCode == 200 || response.statusCode == 201) {
-        final responseData = jsonDecode(response.body);
-        final binId = responseData['metadata']['id'];
-        final viewUrl = 'https://jsonbin.io/$binId';
+        print('✅ 커스텀 서버 업로드 성공!');
+        print('📄 서버 응답: ${response.body}');
         
-        print('✅ JSONBin 업로드 성공!');
-        print('🆔 Bin ID: $binId');
-        print('🔗 View URL: $viewUrl');
+        // 서버에서 응답이 JSON 형태인 경우 파싱
+        String responseMessage = '업로드 성공';
+        try {
+          final responseData = jsonDecode(response.body);
+          responseMessage = responseData['message'] ?? responseMessage;
+          
+          if (responseData['id'] != null) {
+            print('🆔 서버 할당 ID: ${responseData['id']}');
+          }
+        } catch (e) {
+          // JSON 파싱 실패해도 성공은 성공
+          print('📝 응답이 JSON이 아님: ${response.body}');
+        }
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('HTML 캡처가 JSONBin에 저장되었습니다!\n\nBin ID: $binId\n\n브라우저에서 확인: $viewUrl'),
-              duration: const Duration(seconds: 8),
+              content: Text('HTML 캡처가 gunsiya.com에 저장되었습니다!\n\n응답: $responseMessage\n\n시각: $timestamp'),
+              duration: const Duration(seconds: 6),
               action: SnackBarAction(
                 label: 'OK',
                 onPressed: () {
@@ -178,12 +190,30 @@ class _MyHomePageState extends State<MyHomePage> {
         }
         return true;
       } else {
-        print('❌ JSONBin 업로드 실패: ${response.statusCode}');
-        print('📄 응답 내용: ${response.body}');
+        print('❌ 서버 업로드 실패: ${response.statusCode}');
+        print('📄 에러 응답: ${response.body}');
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('서버 업로드 실패 (${response.statusCode})\n로컬 저장으로 대체됩니다.'),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
         return false;
       }
     } catch (e) {
-      print('❌ JSONBin 업로드 중 예외 발생: $e');
+      print('❌ 커스텀 서버 업로드 중 예외 발생: $e');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('네트워크 오류: $e\n로컬 저장으로 대체됩니다.'),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
       return false;
     }
   }
