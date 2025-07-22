@@ -26,69 +26,16 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _initializeWebViewController() {
+    // SIMPLIFIED WebView for debugging
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.white)
-      ..setUserAgent('Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36')
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onProgress: (int progress) {
-            // 로딩 진행률 처리 가능
-          },
-          onPageStarted: (String url) {
-            // 페이지 로딩 시작
-          },
-          onPageFinished: (String url) {
-            _hideAppBanners();
-            _extractProductPrice();
-          },
-          onWebResourceError: (WebResourceError error) {
-            print('WebView 오류: ${error.description}');
-          },
-          onNavigationRequest: (NavigationRequest request) {
-            if (request.url.contains('coupang://') ||
-                request.url.contains('itunes.apple.com') ||
-                request.url.contains('apps.apple.com')) {
-              return NavigationDecision.prevent;
-            }
-            return NavigationDecision.navigate;
-          },
-        ),
-      )
+      // ..setBackgroundColor(Colors.white) // REMOVED: might cause white screen
       ..loadRequest(Uri.parse('https://www.coupang.com/'));
   }
 
-  Future<void> _hideAppBanners() async {
-    await controller.runJavaScript('''
-      // 앱 다운로드 배너 숨기기
-      var appBanners = document.querySelectorAll('[class*="app"], [class*="banner"], [id*="app"], [id*="banner"]');
-      appBanners.forEach(function(banner) {
-        if (banner.textContent.includes('앱') || banner.textContent.includes('App') || banner.textContent.includes('다운로드')) {
-          banner.style.display = 'none';
-        }
-      });
-    ''');
-  }
-  
-  Future<void> _extractProductPrice() async {
-    try {
-      final cartViewModel = context.read<CartViewModel>();
-      
-      final result = await controller.runJavaScriptReturningResult('''
-        (function() {
-          var priceElement = document.querySelector('.total-price');
-          return priceElement ? priceElement.textContent : null;
-        })()
-      ''');
-      
-      if (result != null && result.toString() != 'null') {
-        String price = result.toString().replaceAll('"', '');
-        print('추출된 가격: $price');
-      }
-    } catch (e) {
-      print('가격 추출 오류: $e');
-    }
-  }
+  // DISABLED: JavaScript functions that might interfere with page loading
+  // Future<void> _hideAppBanners() async { ... }
+  // Future<void> _extractProductPrice() async { ... }
 
   // 네비게이션 액션 메서드들
   void onHomePressed() {
