@@ -1,0 +1,17 @@
+# ChatGPT 대화 내용 저장 파일
+
+URL: https://chatgpt.com/share/67f8cea6-d1a4-8012-ad4b-92818d7e9689
+생성일: 2025-07-22
+
+[내용 추출 실패]
+해당 ChatGPT 공유 링크의 내용을 자동으로 추출할 수 없습니다.
+
+직접 복사-붙여넣기로 내용을 추가해주세요:
+
+1. 해당 링크를 브라우저에서 열기
+2. 대화 내용을 복사
+3. 이 파일에 붙여넣기
+
+또는 아래 명령으로 파일 편집:
+- VSCode: code chatgpt_conversation_placeholder.txt
+- 터미널: nano chatgpt_conversation_placeholder.txt

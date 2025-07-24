@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:http/http.dart' as http;
+import '../../utils/html_capture_settings.dart';
 import '../../viewmodels/cart_view_model.dart';
 import '../../viewmodels/auth_view_model.dart';
 import '../../widgets/raou_navigation_bar.dart';
@@ -20,6 +21,8 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   late WebViewController controller;
+  String _currentUrl = 'https://www.coupang.com/'; // 현재 URL 상태
+  bool _isLoading = false; // 페이지 로딩 상태
   
   @override
   void initState() {
@@ -28,10 +31,50 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _initializeWebViewController() {
-    // SIMPLIFIED WebView for debugging
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      // ..setBackgroundColor(Colors.white) // REMOVED: might cause white screen
+      // URL 변화 감지 설정
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (String url) {
+            print('🌐 페이지 로딩 시작: $url');
+            setState(() {
+              _currentUrl = url;
+              _isLoading = true;
+            });
+          },
+          onPageFinished: (String url) {
+            print('✅ 페이지 로딩 완료: $url');
+            setState(() {
+              _currentUrl = url;
+              _isLoading = false;
+            });
+          },
+          onWebResourceError: (WebResourceError error) {
+            print('❌ 페이지 로딩 오류: ${error.description}');
+            setState(() {
+              _isLoading = false;
+            });
+          },
+          onNavigationRequest: (NavigationRequest request) {
+            print('🔗 네비게이션 요청: ${request.url}');
+            
+            // 특정 URL 차단이 필요한 경우
+            if (request.url.startsWith('mailto:')) {
+              print('📧 메일 링크 차단: ${request.url}');
+              return NavigationDecision.prevent;
+            }
+            
+            // 외부 앱 실행 방지 (선택사항)
+            if (!request.url.startsWith('http://') && !request.url.startsWith('https://')) {
+              print('🚫 외부 앱 링크 차단: ${request.url}');
+              return NavigationDecision.prevent;
+            }
+            
+            return NavigationDecision.navigate;
+          },
+        ),
+      )
       ..loadRequest(Uri.parse('https://www.coupang.com/'));
   }
 
@@ -52,8 +95,9 @@ class _MyHomePageState extends State<MyHomePage> {
     try {
       print('🛒 주문 버튼 클릭 - HTML 문서 추출 시작');
       
-      // HTML 추출 모드 설정 (true: 전체 HTML, false: 상품 정보만)
-      const bool captureFullHtml = false; // 🔧 여기서 모드 변경 가능
+      // HTML 추출 모드 설정 (SharedPreferences에서 동적으로 로드)
+      final captureFullHtml = await HtmlCaptureSettings.isFullHtmlMode();
+      print('🔧 설정에서 로드한 HTML 캡처 모드: ${captureFullHtml ? "전체 HTML" : "핵심 정보만"}');
       
       String htmlContent;
       String captureMode;
@@ -139,25 +183,42 @@ class _MyHomePageState extends State<MyHomePage> {
         print('🎯 핵심 상품 정보 추출 완료: ${htmlContent.length} characters');
       }
       
-      // 2. 현재 URL 가져오기
-      final urlResult = await controller.runJavaScriptReturningResult("""
+      // 2. 현재 URL 사용 (실시간으로 추적된 상태 사용)
+      final url = _currentUrl;
+      print('🔄 상태에서 가져온 현재 URL: $url');
+      
+      // 3. JavaScript로도 URL 확인 (검증용)
+      final jsUrlResult = await controller.runJavaScriptReturningResult("""
         (() => {
           return window.location.href;
         })()
       """);
+      final jsUrl = jsUrlResult.toString().replaceAll('"', '');
       
-      // 3. 타임스탬프 생성
+      // URL 일치 여부 확인
+      if (url != jsUrl) {
+        print('⚠️ URL 불일치 감지!');
+        print('  - 상태 URL: $url');
+        print('  - JS URL: $jsUrl');
+        print('  - JS URL을 사용합니다.');
+        // JavaScript에서 가져온 URL이 더 정확할 수 있으므로 업데이트
+        setState(() {
+          _currentUrl = jsUrl;
+        });
+      }
+      
+      // 4. 타임스탬프 생성
       final timestamp = DateTime.now().toIso8601String();
-      final url = urlResult.toString().replaceAll('"', '');
+      final finalUrl = jsUrl.isNotEmpty ? jsUrl : url; // 최종 URL 결정
       
       print('📄 HTML 문서 크기: ${htmlContent.length} characters');
-      print('🌐 현재 URL: $url');
+      print('🌐 최종 URL: $finalUrl');
       print('📋 추출 모드: $captureMode');
       
-      // 4. 서버에 HTML 문서 업로드 (추출 모드 정보 포함)
-      await _uploadHtmlToGist(htmlContent, url, timestamp, captureMode);
+      // 5. 서버에 HTML 문서 업로드 (최종 URL 사용)
+      await _uploadHtmlToGist(htmlContent, finalUrl, timestamp, captureMode);
       
-      // 5. 기존 가격 추출 로직도 유지 (백업용)
+      // 6. 기존 가격 추출 로직도 유지 (백업용)
       final priceResult = await controller.runJavaScriptReturningResult("""
         (() => {
           const quantityDiv = document.querySelector('#MWEB_PRODUCT_DETAIL_ATF_QUANTITY');

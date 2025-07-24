@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../viewmodels/auth_view_model.dart';
 import '../../viewmodels/order_view_model.dart';
 import '../../viewmodels/address_view_model.dart';
+import '../../utils/html_capture_settings.dart';
 import '../address/address_list_page.dart';
 
 class ProfilePage extends StatelessWidget {
@@ -170,6 +171,12 @@ class SignInView extends StatelessWidget {
                         fontWeight: FontWeight.w500,
                       ),
                     ),
+                    
+                    // HTML 캡처 설정 추가
+                    const SizedBox(height: 24),
+                    const Divider(),
+                    const SizedBox(height: 16),
+                    const HtmlCaptureSettingsWidget(),
                   ],
                 );
               },
@@ -235,6 +242,8 @@ class UserProfileView extends StatelessWidget {
           ProfileHeader(user: user),
           const SizedBox(height: 32),
           const ProfileStats(),
+          const SizedBox(height: 32),
+          const HtmlCaptureSettingsWidget(),
           const SizedBox(height: 32),
           const ProfileMenuSection(),
         ],
@@ -483,6 +492,240 @@ class ProfileMenuItem extends StatelessWidget {
         ),
         trailing: const Icon(Icons.chevron_right),
         onTap: onTap,
+      ),
+    );
+  }
+}
+
+class HtmlCaptureSettingsWidget extends StatefulWidget {
+  const HtmlCaptureSettingsWidget({super.key});
+
+  @override
+  State<HtmlCaptureSettingsWidget> createState() => _HtmlCaptureSettingsWidgetState();
+}
+
+class _HtmlCaptureSettingsWidgetState extends State<HtmlCaptureSettingsWidget> {
+  CaptureMode _currentMode = CaptureMode.productSections;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentSettings();
+  }
+
+  Future<void> _loadCurrentSettings() async {
+    try {
+      final mode = await HtmlCaptureSettings.getCaptureMode();
+      if (mounted) {
+        setState(() {
+          _currentMode = mode;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('❌ HTML 캡처 설정 로드 실패: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _updateCaptureMode(CaptureMode mode) async {
+    try {
+      await HtmlCaptureSettings.setCaptureMode(mode);
+      if (mounted) {
+        setState(() {
+          _currentMode = mode;
+        });
+        
+        // 사용자에게 변경 확인 메시지 표시
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('HTML 캡처 모드가 "${mode.displayName}"으로 변경되었습니다'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        
+        // 디버그 로그
+        await HtmlCaptureSettings.printCurrentSettings();
+      }
+    } catch (e) {
+      print('❌ HTML 캡처 설정 저장 실패: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('설정 저장에 실패했습니다'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.web, color: Colors.blue),
+                const SizedBox(width: 8),
+                const Text(
+                  'HTML 캡처 설정',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                if (_isLoading)
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '주문 버튼 클릭 시 서버로 전송할 HTML 데이터 범위를 선택하세요.',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey,
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // 핵심 정보만 옵션
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: _currentMode == CaptureMode.productSections
+                      ? Colors.blue
+                      : Colors.grey.shade300,
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: RadioListTile<CaptureMode>(
+                value: CaptureMode.productSections,
+                groupValue: _currentMode,
+                onChanged: _isLoading ? null : (value) {
+                  if (value != null) {
+                    _updateCaptureMode(value);
+                  }
+                },
+                title: Row(
+                  children: [
+                    const Icon(Icons.list_alt, size: 20, color: Colors.green),
+                    const SizedBox(width: 8),
+                    Text(
+                      CaptureMode.productSections.displayName,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade100,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        '권장',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.green,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                subtitle: Text(
+                  CaptureMode.productSections.description,
+                  style: const TextStyle(fontSize: 12),
+                ),
+                activeColor: Colors.blue,
+              ),
+            ),
+            
+            const SizedBox(height: 12),
+            
+            // 전체 HTML 옵션
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: _currentMode == CaptureMode.fullHtml
+                      ? Colors.blue
+                      : Colors.grey.shade300,
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: RadioListTile<CaptureMode>(
+                value: CaptureMode.fullHtml,
+                groupValue: _currentMode,
+                onChanged: _isLoading ? null : (value) {
+                  if (value != null) {
+                    _updateCaptureMode(value);
+                  }
+                },
+                title: Row(
+                  children: [
+                    const Icon(Icons.code, size: 20, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    Text(
+                      CaptureMode.fullHtml.displayName,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+                subtitle: Text(
+                  CaptureMode.fullHtml.description,
+                  style: const TextStyle(fontSize: 12),
+                ),
+                activeColor: Colors.blue,
+              ),
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // 현재 설정 표시
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: Colors.blue.shade700,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '현재 설정: ${_currentMode.displayName}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.blue.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
