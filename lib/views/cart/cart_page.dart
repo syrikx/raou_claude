@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../../viewmodels/cart_view_model.dart';
 import '../../viewmodels/auth_view_model.dart';
 import '../../models/cart_item.dart';
+import '../../shared/utils/ui_helper.dart';
+import '../../shared/constants/app_constants.dart';
 import '../order/order_confirm_page.dart';
 
 class CartPage extends StatelessWidget {
@@ -100,28 +102,19 @@ class CartPage extends StatelessWidget {
     );
   }
 
-  void _showClearCartDialog(BuildContext context) {
-    showDialog(
+  void _showClearCartDialog(BuildContext context) async {
+    final confirmed = await UIHelper.showConfirmDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Clear Cart'),
-        content: const Text('Are you sure you want to remove all items from your cart?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              context.read<CartViewModel>().clearCart();
-              Navigator.pop(context);
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Clear'),
-          ),
-        ],
-      ),
+      title: '장바구니 비우기',
+      content: '장바구니에 있는 모든 상품을 삭제하시겠습니까?',
+      confirmText: '삭제',
+      cancelText: '취소',
     );
+
+    if (confirmed) {
+      context.read<CartViewModel>().clearCart();
+      UIHelper.showSnack('장바구니가 비워졌습니다.', context: context);
+    }
   }
 }
 
@@ -206,28 +199,19 @@ class CartItemCard extends StatelessWidget {
     );
   }
 
-  void _showDeleteDialog(BuildContext context) {
-    showDialog(
+  void _showDeleteDialog(BuildContext context) async {
+    final confirmed = await UIHelper.showConfirmDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Remove Item'),
-        content: Text('Remove ${cartItem.product.name} from cart?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              context.read<CartViewModel>().removeFromCart(cartItem.id);
-              Navigator.pop(context);
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
+      title: '상품 삭제',
+      content: '${cartItem.product.name}을(를) 장바구니에서 삭제하시겠습니까?',
+      confirmText: '삭제',
+      cancelText: '취소',
     );
+
+    if (confirmed) {
+      context.read<CartViewModel>().removeFromCart(cartItem.id);
+      UIHelper.showSnack('상품이 삭제되었습니다.', context: context);
+    }
   }
 }
 
@@ -325,19 +309,16 @@ class CartSummary extends StatelessWidget {
   void _proceedToCheckout(BuildContext context) {
     final authViewModel = context.read<AuthViewModel>();
     if (!authViewModel.isAuthenticated) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please sign in to continue')),
+      UIHelper.showWarningSnack(
+        '주문하려면 먼저 로그인해주세요.',
+        context: context,
       );
       return;
     }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => OrderConfirmPage(
-          cartItems: cartViewModel.cartItems,
-        ),
-      ),
+    UIHelper.navigateTo(
+      OrderConfirmPage(cartItems: cartViewModel.cartItems),
+      context: context,
     );
   }
 }

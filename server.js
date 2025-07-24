@@ -90,6 +90,9 @@ app.post('/raou/post_coupang', async (req, res) => {
     // HTML 구조 분석 및 포맷팅
     const htmlAnalysis = await analyzeAndFormatHtml(decodedHtml);
     
+    // URL 분석 및 추가 정보 추출
+    const urlData = analyzeUrl(url);
+    
     // 저장할 데이터 구조화
     const dataToSave = {
       metadata: {
@@ -98,7 +101,10 @@ app.post('/raou/post_coupang', async (req, res) => {
         html_size: decodedHtml.length,
         html_size_original: html_content.length,
         html_size_formatted: htmlAnalysis.formatted_html.length,
-        url_domain: new URL(url).hostname,
+        url_domain: urlData.domain,
+        url_path: urlData.path,
+        url_params: urlData.params,
+        is_product_page: urlData.is_product_page,
         decoded: true,
         structured: true,
         html_stats: htmlAnalysis.stats
@@ -111,6 +117,7 @@ app.post('/raou/post_coupang', async (req, res) => {
         user_agent,
         capture_mode: capture_mode || 'full_html'
       },
+      url_analysis: urlData,
       html_analysis: htmlAnalysis,
       html_content: decodedHtml,
       original_html_content: html_content // 원본도 보관
@@ -167,7 +174,11 @@ app.get('/raou/list', async (req, res) => {
             size: stats.size,
             url: data.request_data?.url,
             timestamp: data.request_data?.timestamp,
-            html_size: data.metadata?.html_size
+            html_size: data.metadata?.html_size,
+            capture_mode: data.request_data?.capture_mode,
+            page_type: data.url_analysis?.page_type,
+            is_product_page: data.url_analysis?.is_product_page,
+            domain: data.url_analysis?.domain
           };
         } catch (parseError) {
           return {
@@ -194,6 +205,81 @@ app.get('/raou/list', async (req, res) => {
     res.status(500).json({
       success: false,
       message: '파일 목록 조회 실패',
+      error: error.message
+    });
+  }
+});
+
+// URL별 캡처 내역 검색
+app.get('/raou/search', async (req, res) => {
+  try {
+    const { url, domain, page_type, capture_mode } = req.query;
+    
+    const files = await fs.readdir(DATA_DIR);
+    const jsonFiles = files.filter(file => file.endsWith('.json'));
+    
+    const searchResults = [];
+    
+    for (const fileName of jsonFiles) {
+      const filePath = path.join(DATA_DIR, fileName);
+      try {
+        const content = await fs.readFile(filePath, 'utf8');
+        const data = JSON.parse(content);
+        
+        // 검색 조건 확인
+        let matches = true;
+        
+        if (url && !data.request_data?.url?.includes(url)) {
+          matches = false;
+        }
+        
+        if (domain && data.url_analysis?.domain !== domain) {
+          matches = false;
+        }
+        
+        if (page_type && data.url_analysis?.page_type !== page_type) {
+          matches = false;
+        }
+        
+        if (capture_mode && data.request_data?.capture_mode !== capture_mode) {
+          matches = false;
+        }
+        
+        if (matches) {
+          const stats = await fs.stat(filePath);
+          searchResults.push({
+            file_name: fileName,
+            created: stats.birthtime,
+            url: data.request_data?.url,
+            timestamp: data.request_data?.timestamp,
+            capture_mode: data.request_data?.capture_mode,
+            page_type: data.url_analysis?.page_type,
+            is_product_page: data.url_analysis?.is_product_page,
+            domain: data.url_analysis?.domain,
+            html_size: data.metadata?.html_size
+          });
+        }
+      } catch (parseError) {
+        // JSON 파싱 실패한 파일은 무시
+        continue;
+      }
+    }
+    
+    // 최신순 정렬
+    searchResults.sort((a, b) => new Date(b.created) - new Date(a.created));
+    
+    res.json({
+      success: true,
+      search_params: { url, domain, page_type, capture_mode },
+      count: searchResults.length,
+      results: searchResults
+    });
+    
+  } catch (error) {
+    console.error('❌ 검색 오류:', error);
+    res.status(500).json({
+      success: false,
+      message: '검색 실패',
       error: error.message
     });
   }
@@ -246,12 +332,20 @@ app.get('/raou/health', (req, res) => {
 app.get('/raou', (req, res) => {
   res.json({
     message: 'Coupang HTML Capture Server',
-    version: '1.0.0',
+    version: '1.1.0',
+    base_path: '/raou',
     endpoints: {
-      'POST /post_coupang': 'HTML 캡처 데이터 저장',
-      'GET /list': '저장된 파일 목록 조회',
-      'GET /view/:filename': '특정 파일 내용 조회',
-      'GET /health': '서버 상태 확인'
+      'POST /raou/post_coupang': 'HTML 캡처 데이터 저장 (URL 분석 포함)',
+      'GET /raou/list': '저장된 파일 목록 조회',
+      'GET /raou/search': 'URL별 캡처 내역 검색 (?url=, ?domain=, ?page_type=, ?capture_mode=)',
+      'GET /raou/view/:filename': '특정 파일 내용 조회',
+      'GET /raou/health': '서버 상태 확인'
+    },
+    features: {
+      url_analysis: 'URL 구조 분석 및 페이지 타입 분류',
+      search_filters: 'URL, 도메인, 페이지 타입, 캡처 모드별 검색',
+      html_formatting: 'Prettier를 통한 HTML 구조 분석',
+      data_persistence: 'JSON 형태로 구조화된 데이터 저장'
     }
   });
 });
@@ -260,17 +354,72 @@ app.get('/raou', (req, res) => {
 initializeServer().then(() => {
   app.listen(PORT, () => {
     console.log('🚀 Coupang HTML Capture Server 시작!');
-    console.log(`📡 서버 주소: http://localhost:${PORT}`);
+    console.log(`📡 서버 주소: http://localhost:${PORT}/raou`);
     console.log('📍 주요 엔드포인트:');
-    console.log(`  - POST /post_coupang - HTML 데이터 저장`);
-    console.log(`  - GET /list - 파일 목록 조회`);
-    console.log(`  - GET /health - 서버 상태 확인`);
+    console.log(`  - POST /raou/post_coupang - HTML 데이터 저장 (URL 분석 포함)`);
+    console.log(`  - GET /raou/list - 파일 목록 조회`);
+    console.log(`  - GET /raou/search - URL별 검색`);
+    console.log(`  - GET /raou/health - 서버 상태 확인`);
     console.log(`📁 데이터 저장 경로: ${DATA_DIR}`);
     console.log('');
     console.log('💡 테스트 방법:');
-    console.log(`  curl http://localhost:${PORT}/health`);
+    console.log(`  curl http://localhost:${PORT}/raou/health`);
+    console.log(`  curl "http://localhost:${PORT}/raou/search?page_type=product"`);
+    console.log(`  curl "http://localhost:${PORT}/raou/search?domain=www.coupang.com"`);
   });
 });
+
+// URL 분석 함수
+function analyzeUrl(urlString) {
+  try {
+    const url = new URL(urlString);
+    
+    // 쿠팡 URL 패턴 분석
+    const isCoupangDomain = url.hostname.includes('coupang.com');
+    const isProductPage = url.pathname.includes('/vp/products/') || 
+                         url.pathname.includes('/products/') ||
+                         url.searchParams.has('itemId') ||
+                         url.searchParams.has('vendorItemId');
+    
+    // URL 파라미터 분석
+    const params = {};
+    url.searchParams.forEach((value, key) => {
+      params[key] = value;
+    });
+    
+    // 경로 분석
+    const pathSegments = url.pathname.split('/').filter(segment => segment.length > 0);
+    
+    return {
+      original_url: urlString,
+      protocol: url.protocol,
+      domain: url.hostname,
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
+      path: url.pathname,
+      path_segments: pathSegments,
+      params: params,
+      param_count: Object.keys(params).length,
+      hash: url.hash,
+      is_coupang: isCoupangDomain,
+      is_product_page: isProductPage,
+      page_type: isProductPage ? 'product' : 
+                url.pathname === '/' ? 'home' : 
+                url.pathname.includes('/search') ? 'search' : 
+                url.pathname.includes('/category') ? 'category' : 'other',
+      analyzed_at: new Date().toISOString()
+    };
+  } catch (error) {
+    console.warn('⚠️ URL 분석 실패:', error.message);
+    return {
+      original_url: urlString,
+      error: error.message,
+      is_coupang: false,
+      is_product_page: false,
+      page_type: 'unknown',
+      analyzed_at: new Date().toISOString()
+    };
+  }
+}
 
 // HTML 구조 분석 및 포맷팅 함수
 async function analyzeAndFormatHtml(htmlContent) {

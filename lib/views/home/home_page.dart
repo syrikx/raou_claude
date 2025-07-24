@@ -8,6 +8,11 @@ import '../../utils/html_capture_settings.dart';
 import '../../viewmodels/cart_view_model.dart';
 import '../../viewmodels/auth_view_model.dart';
 import '../../widgets/raou_navigation_bar.dart';
+import '../../shared/utils/ui_helper.dart';
+import '../../shared/utils/app_logger.dart';
+import '../../shared/utils/app_validator.dart';
+import '../../shared/constants/app_constants.dart';
+import '../../shared/utils/datetime_helper.dart';
 import '../cart/cart_page.dart';
 import '../order/order_page.dart';
 import '../auth/profile_page.dart';
@@ -37,37 +42,37 @@ class _MyHomePageState extends State<MyHomePage> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
-            print('🌐 페이지 로딩 시작: $url');
+            AppLogger.network('페이지 로딩 시작', url: url);
             setState(() {
               _currentUrl = url;
               _isLoading = true;
             });
           },
           onPageFinished: (String url) {
-            print('✅ 페이지 로딩 완료: $url');
+            AppLogger.network('페이지 로딩 완료', url: url);
             setState(() {
               _currentUrl = url;
               _isLoading = false;
             });
           },
           onWebResourceError: (WebResourceError error) {
-            print('❌ 페이지 로딩 오류: ${error.description}');
+            AppLogger.error('페이지 로딩 오류', error: error.description, tag: 'WebView');
             setState(() {
               _isLoading = false;
             });
           },
           onNavigationRequest: (NavigationRequest request) {
-            print('🔗 네비게이션 요청: ${request.url}');
+            AppLogger.network('네비게이션 요청', url: request.url);
             
             // 특정 URL 차단이 필요한 경우
             if (request.url.startsWith('mailto:')) {
-              print('📧 메일 링크 차단: ${request.url}');
+              AppLogger.warning('메일 링크 차단', tag: 'Navigation');
               return NavigationDecision.prevent;
             }
             
             // 외부 앱 실행 방지 (선택사항)
             if (!request.url.startsWith('http://') && !request.url.startsWith('https://')) {
-              print('🚫 외부 앱 링크 차단: ${request.url}');
+              AppLogger.warning('외부 앱 링크 차단: ${request.url}', tag: 'Navigation');
               return NavigationDecision.prevent;
             }
             
@@ -75,7 +80,7 @@ class _MyHomePageState extends State<MyHomePage> {
           },
         ),
       )
-      ..loadRequest(Uri.parse('https://www.coupang.com/'));
+      ..loadRequest(Uri.parse(AppConstants.coupangBaseUrl));
   }
 
   // DISABLED: JavaScript functions that might interfere with page loading
@@ -84,20 +89,29 @@ class _MyHomePageState extends State<MyHomePage> {
 
   // 네비게이션 액션 메서드들
   void onHomePressed() {
-    controller.loadRequest(Uri.parse('https://www.coupang.com/'));
+    AppLogger.userAction('홈 버튼 클릭');
+    controller.loadRequest(Uri.parse(AppConstants.coupangBaseUrl));
   }
 
   void onCoupangPressed() {
-    controller.loadRequest(Uri.parse('https://www.coupang.com/'));
+    AppLogger.userAction('쿠팡 버튼 클릭');
+    controller.loadRequest(Uri.parse(AppConstants.coupangBaseUrl));
   }
 
   void onOrderPressed() async {
     try {
-      print('🛒 주문 버튼 클릭 - HTML 문서 추출 시작');
+      AppLogger.userAction('주문 버튼 클릭', params: {'action': 'html_capture_start'});
+      
+      // URL 검증
+      if (!AppValidator.isCoupangUrl(_currentUrl)) {
+        AppLogger.warning('쿠팡 URL이 아님', tag: 'HTML_CAPTURE');
+        UIHelper.showWarningSnack('쿠팡 페이지에서만 HTML 캡처가 가능합니다.', context: context);
+        return;
+      }
       
       // HTML 추출 모드 설정 (SharedPreferences에서 동적으로 로드)
       final captureFullHtml = await HtmlCaptureSettings.isFullHtmlMode();
-      print('🔧 설정에서 로드한 HTML 캡처 모드: ${captureFullHtml ? "전체 HTML" : "핵심 정보만"}');
+      AppLogger.data('HTML 캡처 모드', operation: 'load_settings', value: captureFullHtml ? "전체 HTML" : "핵심 정보만");
       
       String htmlContent;
       String captureMode;
@@ -110,8 +124,8 @@ class _MyHomePageState extends State<MyHomePage> {
           })()
         """);
         htmlContent = htmlResult.toString();
-        captureMode = "full_html";
-        print('📄 전체 HTML 추출 완료: ${htmlContent.length} characters');
+        captureMode = AppConstants.captureModeFull;
+        AppLogger.data('전체 HTML 추출 완료', operation: 'extract_html', value: '${htmlContent.length} characters');
       } else {
         // 1-B. 핵심 상품 정보만 추출
         final htmlResult = await controller.runJavaScriptReturningResult("""
@@ -179,8 +193,8 @@ class _MyHomePageState extends State<MyHomePage> {
           })()
         """);
         htmlContent = htmlResult.toString();
-        captureMode = "product_sections";
-        print('🎯 핵심 상품 정보 추출 완료: ${htmlContent.length} characters');
+        captureMode = AppConstants.captureModeProduct;
+        AppLogger.data('핵심 상품 정보 추출 완료', operation: 'extract_html', value: '${htmlContent.length} characters');
       }
       
       // 2. 현재 URL 사용 (실시간으로 추적된 상태 사용)
@@ -208,12 +222,14 @@ class _MyHomePageState extends State<MyHomePage> {
       }
       
       // 4. 타임스탬프 생성
-      final timestamp = DateTime.now().toIso8601String();
+      final timestamp = DateTimeHelper.format(DateTime.now());
       final finalUrl = jsUrl.isNotEmpty ? jsUrl : url; // 최종 URL 결정
       
-      print('📄 HTML 문서 크기: ${htmlContent.length} characters');
-      print('🌐 최종 URL: $finalUrl');
-      print('📋 추출 모드: $captureMode');
+      AppLogger.data('HTML 문서 준비 완료', operation: 'summary', value: {
+        'size': '${htmlContent.length} characters',
+        'url': finalUrl,
+        'mode': captureMode
+      });
       
       // 5. 서버에 HTML 문서 업로드 (최종 URL 사용)
       await _uploadHtmlToGist(htmlContent, finalUrl, timestamp, captureMode);
@@ -242,10 +258,7 @@ class _MyHomePageState extends State<MyHomePage> {
     }
     
     // 6. 주문 페이지로 이동
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const OrderPage()),
-    );
+    UIHelper.navigateTo(const OrderPage(), context: context);
   }
   
   Future<void> _uploadHtmlToGist(String htmlContent, String url, String timestamp, String captureMode) async {
@@ -268,9 +281,8 @@ class _MyHomePageState extends State<MyHomePage> {
   
   Future<bool> _uploadToCustomServer(String htmlContent, String url, String timestamp, String captureMode) async {
     try {
-      print('📤 gunsiya.com 서버 업로드 시작...');
-      
-      const String serverUrl = 'https://gunsiya.com/raou/post_coupang';
+      const String serverUrl = AppConstants.postCoupangEndpoint;
+      AppLogger.network('서버 업로드 시작', method: 'POST', url: serverUrl);
       
       final data = {
         'timestamp': timestamp,
@@ -317,17 +329,10 @@ class _MyHomePageState extends State<MyHomePage> {
         }
         
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('HTML 캡처가 gunsiya.com에 저장되었습니다!\n\n모드: ${captureMode == "full_html" ? "전체 HTML" : "핵심 정보만"}\n응답: $responseMessage\n\n시각: $timestamp'),
-              duration: const Duration(seconds: 6),
-              action: SnackBarAction(
-                label: 'OK',
-                onPressed: () {
-                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                },
-              ),
-            ),
+          UIHelper.showSuccessSnack(
+            'HTML 캡처가 gunsiya.com에 저장되었습니다!\n\n모드: ${captureMode == "full_html" ? "전체 HTML" : "핵심 정보만"}\n응답: $responseMessage\n\n시각: $timestamp',
+            context: context,
+            seconds: 6,
           );
         }
         return true;
@@ -336,11 +341,10 @@ class _MyHomePageState extends State<MyHomePage> {
         print('📄 에러 응답: ${response.body}');
         
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('서버 업로드 실패 (${response.statusCode})\n로컬 저장으로 대체됩니다.'),
-              duration: const Duration(seconds: 4),
-            ),
+          UIHelper.showErrorSnack(
+            '서버 업로드 실패 (${response.statusCode})\n로컬 저장으로 대체됩니다.',
+            context: context,
+            seconds: 4,
           );
         }
         return false;
@@ -349,11 +353,10 @@ class _MyHomePageState extends State<MyHomePage> {
       print('❌ 커스텀 서버 업로드 중 예외 발생: $e');
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('네트워크 오류: $e\n로컬 저장으로 대체됩니다.'),
-            duration: const Duration(seconds: 4),
-          ),
+        UIHelper.showErrorSnack(
+          '네트워크 오류: $e\n로컬 저장으로 대체됩니다.',
+          context: context,
+          seconds: 4,
         );
       }
       return false;
@@ -374,11 +377,10 @@ class _MyHomePageState extends State<MyHomePage> {
       
       // 사용자에게 로컬 저장 완료 메시지
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('HTML 문서를 로컬에 임시 저장했습니다.'),
-            duration: Duration(seconds: 3),
-          ),
+        UIHelper.showSnack(
+          'HTML 문서를 로컬에 임시 저장했습니다.',
+          context: context,
+          seconds: 3,
         );
       }
     } catch (e) {
@@ -387,17 +389,11 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void onCartPressed() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const CartPage()),
-    );
+    UIHelper.navigateTo(const CartPage(), context: context);
   }
 
   void onProfilePressed() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const ProfilePage()),
-    );
+    UIHelper.navigateTo(const ProfilePage(), context: context);
   }
 
   @override
