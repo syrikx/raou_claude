@@ -18,8 +18,10 @@
   "author": "wykim",
   "license": "MIT",
   "dependencies": {
+    "cheerio": "^1.1.2",
+    "cors": "^2.8.5",
     "express": "^4.18.2",
-    "cors": "^2.8.5"
+    "prettier": "^3.6.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

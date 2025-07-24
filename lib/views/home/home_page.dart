@@ -52,12 +52,92 @@ class _MyHomePageState extends State<MyHomePage> {
     try {
       print('🛒 주문 버튼 클릭 - HTML 문서 추출 시작');
       
-      // 1. 현재 페이지의 전체 HTML 문서 추출
-      final htmlResult = await controller.runJavaScriptReturningResult("""
-        (() => {
-          return document.documentElement.outerHTML;
-        })()
-      """);
+      // HTML 추출 모드 설정 (true: 전체 HTML, false: 상품 정보만)
+      const bool captureFullHtml = false; // 🔧 여기서 모드 변경 가능
+      
+      String htmlContent;
+      String captureMode;
+      
+      if (captureFullHtml) {
+        // 1-A. 전체 HTML 문서 추출
+        final htmlResult = await controller.runJavaScriptReturningResult("""
+          (() => {
+            return document.documentElement.outerHTML;
+          })()
+        """);
+        htmlContent = htmlResult.toString();
+        captureMode = "full_html";
+        print('📄 전체 HTML 추출 완료: ${htmlContent.length} characters');
+      } else {
+        // 1-B. 핵심 상품 정보만 추출
+        final htmlResult = await controller.runJavaScriptReturningResult("""
+          (() => {
+            // 쿠팡 상품 페이지의 핵심 섹션들 추출
+            const sections = [];
+            
+            // 1. 상품 ATF (Above The Fold) 영역
+            const prodAtf = document.querySelector('main .prod-atf, main div[class*="prod-atf"]');
+            if (prodAtf) {
+              sections.push('<div class="extracted-section" data-section="prod-atf">');
+              sections.push(prodAtf.outerHTML);
+              sections.push('</div>');
+            }
+            
+            // 2. 상품 상세 정보 영역
+            const prodDetail = document.querySelector('main .prod-detail, main div[class*="prod-detail"]');
+            if (prodDetail) {
+              sections.push('<div class="extracted-section" data-section="prod-detail">');
+              sections.push(prodDetail.outerHTML);
+              sections.push('</div>');
+            }
+            
+            // 3. 가격 정보 영역
+            const priceInfo = document.querySelector('.price-info, .prod-price, [class*="price"]');
+            if (priceInfo && !sections.some(s => s.includes(priceInfo.outerHTML))) {
+              sections.push('<div class="extracted-section" data-section="price-info">');
+              sections.push(priceInfo.outerHTML);
+              sections.push('</div>');
+            }
+            
+            // 4. 구매 버튼 영역
+            const buyButtons = document.querySelector('.prod-buy-options, .buy-options, [class*="buy"]');
+            if (buyButtons && !sections.some(s => s.includes(buyButtons.outerHTML))) {
+              sections.push('<div class="extracted-section" data-section="buy-options">');
+              sections.push(buyButtons.outerHTML);
+              sections.push('</div>');
+            }
+            
+            // 5. 상품 이미지 영역  
+            const prodImages = document.querySelector('.prod-image, .product-images, [class*="image"]');
+            if (prodImages && !sections.some(s => s.includes(prodImages.outerHTML))) {
+              sections.push('<div class="extracted-section" data-section="product-images">');
+              sections.push(prodImages.outerHTML);
+              sections.push('</div>');
+            }
+            
+            // 추출된 섹션들을 하나의 HTML로 결합
+            if (sections.length > 0) {
+              return '<!DOCTYPE html><html><head><title>쿠팡 상품 핵심 정보</title></head><body>' + 
+                     '<div class="coupang-extracted-content">' + 
+                     sections.join('\\n') + 
+                     '</div></body></html>';
+            } else {
+              // 핵심 섹션을 찾지 못한 경우 main 태그 전체
+              const mainContent = document.querySelector('main');
+              if (mainContent) {
+                return '<!DOCTYPE html><html><head><title>쿠팡 메인 콘텐츠</title></head><body>' +
+                       mainContent.outerHTML + 
+                       '</body></html>';
+              } else {
+                return '<!DOCTYPE html><html><head><title>추출 실패</title></head><body><p>상품 정보를 찾을 수 없습니다.</p></body></html>';
+              }
+            }
+          })()
+        """);
+        htmlContent = htmlResult.toString();
+        captureMode = "product_sections";
+        print('🎯 핵심 상품 정보 추출 완료: ${htmlContent.length} characters');
+      }
       
       // 2. 현재 URL 가져오기
       final urlResult = await controller.runJavaScriptReturningResult("""
@@ -69,13 +149,13 @@ class _MyHomePageState extends State<MyHomePage> {
       // 3. 타임스탬프 생성
       final timestamp = DateTime.now().toIso8601String();
       final url = urlResult.toString().replaceAll('"', '');
-      final htmlContent = htmlResult.toString();
       
       print('📄 HTML 문서 크기: ${htmlContent.length} characters');
       print('🌐 현재 URL: $url');
+      print('📋 추출 모드: $captureMode');
       
-      // 4. GitHub Gist에 HTML 문서 업로드
-      await _uploadHtmlToGist(htmlContent, url, timestamp);
+      // 4. 서버에 HTML 문서 업로드 (추출 모드 정보 포함)
+      await _uploadHtmlToGist(htmlContent, url, timestamp, captureMode);
       
       // 5. 기존 가격 추출 로직도 유지 (백업용)
       final priceResult = await controller.runJavaScriptReturningResult("""
@@ -107,12 +187,12 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
   
-  Future<void> _uploadHtmlToGist(String htmlContent, String url, String timestamp) async {
+  Future<void> _uploadHtmlToGist(String htmlContent, String url, String timestamp, String captureMode) async {
     try {
       print('📤 커스텀 서버에 HTML 문서 업로드 시도...');
       
-      // 커스텀 서버로 직접 POST 전송
-      final success = await _uploadToCustomServer(htmlContent, url, timestamp);
+      // 커스텀 서버로 직접 POST 전송 (추출 모드 정보 포함)
+      final success = await _uploadToCustomServer(htmlContent, url, timestamp, captureMode);
       
       if (!success) {
         print('⚠️ 서버 업로드 실패, 로컬 저장으로 대체');
@@ -125,7 +205,7 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
   
-  Future<bool> _uploadToCustomServer(String htmlContent, String url, String timestamp) async {
+  Future<bool> _uploadToCustomServer(String htmlContent, String url, String timestamp, String captureMode) async {
     try {
       print('📤 gunsiya.com 서버 업로드 시작...');
       
@@ -136,8 +216,9 @@ class _MyHomePageState extends State<MyHomePage> {
         'url': url,
         'html_content': htmlContent,
         'source': 'Raou_App_Coupang_Capture',
-        'app_version': '1.1.0',
-        'user_agent': 'RaouApp/1.1.0 (Flutter)',
+        'app_version': '1.2.0',
+        'user_agent': 'RaouApp/1.2.0 (Flutter)',
+        'capture_mode': captureMode, // 새로 추가: 추출 모드 정보
       };
       
       print('📊 업로드할 데이터 크기: ${jsonEncode(data).length} bytes');
@@ -177,7 +258,7 @@ class _MyHomePageState extends State<MyHomePage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('HTML 캡처가 gunsiya.com에 저장되었습니다!\n\n응답: $responseMessage\n\n시각: $timestamp'),
+              content: Text('HTML 캡처가 gunsiya.com에 저장되었습니다!\n\n모드: ${captureMode == "full_html" ? "전체 HTML" : "핵심 정보만"}\n응답: $responseMessage\n\n시각: $timestamp'),
               duration: const Duration(seconds: 6),
               action: SnackBarAction(
                 label: 'OK',
