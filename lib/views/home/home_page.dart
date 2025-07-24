@@ -410,9 +410,13 @@ class _MyHomePageState extends State<MyHomePage> {
         child: Scaffold(
           body: Stack(
             children: [
+              // WebView는 전체 영역 사용 (쿠팡 주문 버튼을 가리기 위해)
               Positioned.fill(child: WebViewWidget(controller: controller)),
-              Align(
-                alignment: Alignment.bottomCenter,
+              // 네비게이션 바가 WebView를 덮도록 배치
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
                 child: Consumer<CartViewModel>(
                   builder: (context, cartViewModel, child) {
                     return RaouNavigationBar(

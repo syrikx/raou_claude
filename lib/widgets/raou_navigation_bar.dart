@@ -28,7 +28,8 @@ class RaouNavigationBar extends StatelessWidget {
         final user = authViewModel.currentUser;
 
         return Container(
-          color: const Color(0xFF2C2C54).withOpacity(0.9),
+          height: 80, // 명시적인 높이 설정
+          color: const Color(0xFF2C2C54).withOpacity(0.95), // 불투명도 증가
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -40,12 +41,33 @@ class RaouNavigationBar extends StatelessWidget {
               _cartIconWithBadge(onCartPressed, cartItemCount),
               GestureDetector(
                 onTap: onProfilePressed,
-                child: user != null && user.profileImageUrl != null
-                  ? CircleAvatar(
-                      radius: 14,
-                      backgroundImage: NetworkImage(user.profileImageUrl!),
-                    )
-                  : _navItem(Icons.person_outline, '로그인', onProfilePressed),
+                behavior: HitTestBehavior.opaque, // 터치 영역을 명확히 정의
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: user != null && user.profileImageUrl != null
+                    ? CircleAvatar(
+                        radius: 14,
+                        backgroundImage: NetworkImage(user.profileImageUrl!),
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.person_outline,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            '로그인',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                ),
               ),
             ],
           ),
@@ -71,23 +93,27 @@ class RaouNavigationBar extends StatelessWidget {
   Widget _navItem(IconData icon, String label, void Function() onPressed) {
     return GestureDetector(
       onTap: onPressed,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: Colors.white,
-            size: 20,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: const TextStyle(
+      behavior: HitTestBehavior.opaque, // 터치 영역을 명확히 정의
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
               color: Colors.white,
-              fontSize: 10,
+              size: 20,
             ),
-          ),
-        ],
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -95,52 +121,56 @@ class RaouNavigationBar extends StatelessWidget {
   Widget _cartIconWithBadge(void Function() onPressed, int itemCount) {
     return GestureDetector(
       onTap: onPressed,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.shopping_cart_outlined,
-                color: Colors.white,
-                size: 20,
-              ),
-              const SizedBox(height: 2),
-              const Text(
-                '장바구니',
-                style: TextStyle(
+      behavior: HitTestBehavior.opaque, // 터치 영역을 명확히 정의
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.shopping_cart_outlined,
                   color: Colors.white,
-                  fontSize: 10,
+                  size: 20,
                 ),
-              ),
-            ],
-          ),
-          if (itemCount > 0)
-            Positioned(
-              right: -6,
-              top: -6,
-              child: Container(
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                constraints: const BoxConstraints(
-                  minWidth: 14,
-                  minHeight: 14,
-                ),
-                child: Text(
-                  '$itemCount',
-                  style: const TextStyle(
+                const SizedBox(height: 2),
+                const Text(
+                  '장바구니',
+                  style: TextStyle(
                     color: Colors.white,
-                    fontSize: 8,
+                    fontSize: 10,
                   ),
-                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+            if (itemCount > 0)
+              Positioned(
+                right: -6,
+                top: -6,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 14,
+                    minHeight: 14,
+                  ),
+                  child: Text(
+                    '$itemCount',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 8,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
