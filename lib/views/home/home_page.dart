@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -28,6 +29,8 @@ class _MyHomePageState extends State<MyHomePage> {
   late WebViewController controller;
   String _currentUrl = 'https://www.coupang.com/'; // 현재 URL 상태
   bool _isLoading = false; // 페이지 로딩 상태
+  String _lastCapturedHtml = ''; // 마지막으로 캐치한 HTML (중복 방지용)
+  Timer? _changeDetectionTimer; // 주기적 변화 감지 타이머
   
   @override
   void initState() {
@@ -54,6 +57,10 @@ class _MyHomePageState extends State<MyHomePage> {
               _currentUrl = url;
               _isLoading = false;
             });
+            
+            // 페이지 로딩 완료 후 초기 HTML 캐치 및 변화 감지 시작
+            _captureInitialState(url);
+            _startChangeDetection();
           },
           onWebResourceError: (WebResourceError error) {
             AppLogger.error('페이지 로딩 오류', error: error.description, tag: 'WebView');
@@ -87,20 +94,291 @@ class _MyHomePageState extends State<MyHomePage> {
   // Future<void> _hideAppBanners() async { ... }
   // Future<void> _extractProductPrice() async { ... }
 
-  // 네비게이션 액션 메서드들
-  void onHomePressed() {
-    AppLogger.userAction('홈 버튼 클릭');
-    controller.loadRequest(Uri.parse(AppConstants.coupangBaseUrl));
+  // ============================================================================
+  // 자동 변화 감지 시스템
+  // ============================================================================
+  
+  /// 페이지 로딩 완료 후 초기 상태 캐치
+  Future<void> _captureInitialState(String url) async {
+    try {
+      await Future.delayed(const Duration(seconds: 2)); // 페이지 안정화 대기
+      
+      if (!AppValidator.isCoupangUrl(url)) {
+        AppLogger.info('쿠팡 페이지가 아니므로 초기 상태 캐치 건너뜀');
+        return;
+      }
+      
+      await _captureCurrentState('page_loaded');
+    } catch (e) {
+      AppLogger.error('초기 상태 캐치 실패', error: e.toString());
+    }
+  }
+  
+  /// 주기적 변화 감지 시작
+  void _startChangeDetection() {
+    _stopChangeDetection(); // 기존 타이머 정리
+    
+    _changeDetectionTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      try {
+        if (!mounted || _isLoading) return;
+        
+        if (AppValidator.isCoupangUrl(_currentUrl)) {
+          await _detectAndCaptureChanges();
+        }
+      } catch (e) {
+        AppLogger.error('변화 감지 중 오류', error: e.toString());
+      }
+    });
+    
+    AppLogger.info('자동 변화 감지 시작 (3초 간격)');
+  }
+  
+  /// 변화 감지 중단
+  void _stopChangeDetection() {
+    if (_changeDetectionTimer?.isActive == true) {
+      _changeDetectionTimer?.cancel();
+      AppLogger.info('자동 변화 감지 중단');
+    }
+  }
+  
+  /// 변화 감지 및 캐치
+  Future<void> _detectAndCaptureChanges() async {
+    try {
+      // 현재 DOM의 핵심 부분 해시값 계산
+      final currentHash = await controller.runJavaScriptReturningResult("""
+        (() => {
+          // 쿠팡 페이지의 주요 변화 포인트들을 체크
+          const checkPoints = [];
+          
+          // 1. URL 변화
+          checkPoints.push(window.location.href);
+          
+          // 2. 상품 가격 영역
+          const priceElements = document.querySelectorAll('[class*="price"], [class*="Price"]');
+          priceElements.forEach(el => checkPoints.push(el.textContent?.trim() || ''));
+          
+          // 3. 상품 옵션 선택 영역
+          const optionElements = document.querySelectorAll('[class*="option"], [class*="Option"], select, input[type="radio"]:checked');
+          optionElements.forEach(el => {
+            if (el.tagName === 'SELECT') {
+              checkPoints.push(el.value);
+            } else if (el.type === 'radio') {
+              checkPoints.push(el.value + ':checked');
+            } else {
+              checkPoints.push(el.textContent?.trim() || el.value || '');
+            }
+          });
+          
+          // 4. 수량 선택
+          const quantityElements = document.querySelectorAll('[class*="quantity"], [class*="Quantity"], input[type="number"]');
+          quantityElements.forEach(el => checkPoints.push(el.value || ''));
+          
+          // 5. 팝업/모달 상태
+          const popupElements = document.querySelectorAll('[class*="popup"], [class*="modal"], [class*="overlay"]');
+          checkPoints.push(popupElements.length.toString());
+          popupElements.forEach(el => {
+            if (el.style.display !== 'none' && el.offsetParent !== null) {
+              checkPoints.push(el.className + ':visible');
+            }
+          });
+          
+          // 6. 장바구니 버튼 상태
+          const cartButtons = document.querySelectorAll('[class*="cart"], [class*="Cart"], button[onclick*="cart"]');
+          cartButtons.forEach(el => checkPoints.push(el.textContent?.trim() || ''));
+          
+          // 체크포인트들을 문자열로 결합하여 간단한 해시 생성
+          const combined = checkPoints.join('|');
+          let hash = 0;
+          for (let i = 0; i < combined.length; i++) {
+            const char = combined.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // 32bit 정수로 변환
+          }
+          
+          return {
+            hash: hash.toString(),
+            checkPoints: checkPoints.slice(0, 10), // 디버깅용으로 처음 10개만
+            url: window.location.href,
+            timestamp: new Date().toISOString()
+          };
+        })()
+      """);
+      
+      final hashData = jsonDecode(currentHash.toString());
+      final currentHashString = hashData['hash'] as String;
+      
+      // 해시값이 변경되었을 때만 상세 캐치 수행
+      if (currentHashString != _lastCapturedHtml) {
+        AppLogger.data('페이지 변화 감지', operation: 'change_detected', value: {
+          'old_hash': _lastCapturedHtml.isEmpty ? 'initial' : _lastCapturedHtml,
+          'new_hash': currentHashString,
+          'url': hashData['url'],
+          'checkpoints': hashData['checkPoints']
+        });
+        
+        _lastCapturedHtml = currentHashString;
+        await _captureCurrentState('content_changed');
+      }
+    } catch (e) {
+      AppLogger.error('변화 감지 실패', error: e.toString());
+    }
+  }
+  
+  /// 현재 상태를 캐치하여 서버로 전송
+  Future<void> _captureCurrentState(String trigger) async {
+    try {
+      AppLogger.data('상태 캐치 시작', operation: 'state_capture', value: trigger);
+      
+      // 현재 설정에 따른 HTML 추출
+      final captureFullHtml = await HtmlCaptureSettings.isFullHtmlMode();
+      String htmlContent;
+      String captureMode;
+      
+      if (captureFullHtml) {
+        // 전체 HTML 추출
+        final htmlResult = await controller.runJavaScriptReturningResult("""
+          (() => {
+            return document.documentElement.outerHTML;
+          })()
+        """);
+        htmlContent = htmlResult.toString();
+        captureMode = AppConstants.captureModeFull;
+      } else {
+        // 핵심 정보만 추출 (기존 로직 사용)
+        final htmlResult = await controller.runJavaScriptReturningResult("""
+          (() => {
+            // 핵심 섹션들 추출
+            const sections = [];
+            
+            // 상품 정보 섹션들
+            const selectors = [
+              'main .prod-atf, main div[class*="prod-atf"]',
+              'main .prod-detail, main div[class*="prod-detail"]', 
+              '.price-info, .prod-price, [class*="price"], [class*="Price"]',
+              '.prod-buy-options, .buy-options, [class*="buy"]',
+              '.prod-image, .product-images, [class*="image"]',
+              '[class*="option"], [class*="Option"]', // 옵션 선택 영역
+              '[class*="quantity"], [class*="Quantity"]', // 수량 선택 영역
+              '[class*="popup"], [class*="modal"], [class*="overlay"]' // 팝업/모달
+            ];
+            
+            selectors.forEach((selector, index) => {
+              const elements = document.querySelectorAll(selector);
+              elements.forEach(el => {
+                if (el && !sections.some(s => s.includes(el.outerHTML))) {
+                  sections.push('<div class="extracted-section" data-section="section-' + index + '">');
+                  sections.push(el.outerHTML);
+                  sections.push('</div>');
+                }
+              });
+            });
+            
+            if (sections.length > 0) {
+              return '<!DOCTYPE html><html><head><title>쿠팡 상태 캐치 - ' + new Date().toISOString() + '</title></head><body>' + 
+                     '<div class="coupang-captured-content" data-trigger="' + '$trigger' + '">' + 
+                     sections.join('\\n') + 
+                     '</div></body></html>';
+            } else {
+              const mainContent = document.querySelector('main');
+              return mainContent ? 
+                '<!DOCTYPE html><html><head><title>쿠팡 메인 콘텐츠</title></head><body>' + mainContent.outerHTML + '</body></html>' :
+                '<!DOCTYPE html><html><head><title>추출 실패</title></head><body><p>콘텐츠를 찾을 수 없습니다.</p></body></html>';
+            }
+          })()
+        """);
+        htmlContent = htmlResult.toString();
+        captureMode = AppConstants.captureModeProduct;
+      }
+      
+      // 추가 상세 정보 수집
+      final pageDetails = await controller.runJavaScriptReturningResult("""
+        (() => {
+          return {
+            url: window.location.href,
+            title: document.title,
+            timestamp: new Date().toISOString(),
+            trigger: '$trigger',
+            // 선택된 옵션들
+            selectedOptions: Array.from(document.querySelectorAll('select, input[type="radio"]:checked, input[type="checkbox"]:checked')).map(el => ({
+              name: el.name || el.id || 'unknown',
+              value: el.value,
+              text: el.textContent?.trim() || el.value
+            })),
+            // 현재 수량
+            quantity: document.querySelector('input[type="number"]')?.value || '1',
+            // 팝업 상태
+            popupVisible: document.querySelectorAll('[class*="popup"], [class*="modal"]').length > 0
+          };
+        })()
+      """);
+      
+      final details = jsonDecode(pageDetails.toString());
+      final timestamp = DateTimeHelper.format(DateTime.now());
+      
+      // 서버로 전송
+      await _uploadStateToGist(htmlContent, details, timestamp, captureMode, trigger);
+      
+    } catch (e) {
+      AppLogger.error('상태 캐치 실패', error: e.toString());
+    }
+  }
+  
+  /// 상태 정보를 서버로 업로드
+  Future<void> _uploadStateToGist(String htmlContent, Map<String, dynamic> details, String timestamp, String captureMode, String trigger) async {
+    try {
+      const String serverUrl = AppConstants.postCoupangEndpoint;
+      
+      final data = {
+        'timestamp': timestamp,
+        'url': details['url'],
+        'html_content': htmlContent,
+        'source': 'Raou_App_Auto_Capture',
+        'app_version': '1.3.2',
+        'user_agent': 'RaouApp/1.3.2 (Flutter)',
+        'capture_mode': captureMode,
+        'trigger': trigger, // 캐치 트리거 (page_loaded, content_changed, manual)
+        'page_details': {
+          'title': details['title'],
+          'selected_options': details['selectedOptions'],
+          'quantity': details['quantity'],
+          'popup_visible': details['popupVisible'],
+          'capture_time': details['timestamp'],
+        }
+      };
+      
+      final response = await http.post(
+        Uri.parse(serverUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'RaouApp/1.3.2 (Flutter Auto-Capture)',
+          'X-Capture-Trigger': trigger,
+        },
+        body: jsonEncode(data),
+      );
+      
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        AppLogger.network('자동 상태 캐치 업로드 성공', method: 'POST', statusCode: response.statusCode);
+        
+        if (mounted && trigger == 'manual') {
+          UIHelper.showSuccessSnack(
+            '페이지 상태가 자동으로 저장되었습니다!\\n트리거: $trigger\\n시각: $timestamp',
+            context: context,
+            seconds: 3,
+          );
+        }
+      } else {
+        AppLogger.warning('자동 상태 캐치 업로드 실패', tag: 'AUTO_CAPTURE');
+      }
+    } catch (e) {
+      AppLogger.error('자동 상태 캐치 업로드 오류', error: e.toString());
+    }
   }
 
-  void onCoupangPressed() {
-    AppLogger.userAction('쿠팡 버튼 클릭');
-    controller.loadRequest(Uri.parse(AppConstants.coupangBaseUrl));
-  }
 
   void onOrderPressed() async {
     try {
-      AppLogger.userAction('주문 버튼 클릭', params: {'action': 'html_capture_start'});
+      AppLogger.userAction('주문 버튼 클릭', params: {'action': 'manual_capture_start'});
       
       // URL 검증
       if (!AppValidator.isCoupangUrl(_currentUrl)) {
@@ -109,283 +387,38 @@ class _MyHomePageState extends State<MyHomePage> {
         return;
       }
       
-      // HTML 추출 모드 설정 (SharedPreferences에서 동적으로 로드)
-      final captureFullHtml = await HtmlCaptureSettings.isFullHtmlMode();
-      AppLogger.data('HTML 캡처 모드', operation: 'load_settings', value: captureFullHtml ? "전체 HTML" : "핵심 정보만");
+      // 수동 캐치 수행 (새로운 자동 시스템 사용)
+      await _captureCurrentState('manual');
       
-      String htmlContent;
-      String captureMode;
-      
-      if (captureFullHtml) {
-        // 1-A. 전체 HTML 문서 추출
-        final htmlResult = await controller.runJavaScriptReturningResult("""
-          (() => {
-            return document.documentElement.outerHTML;
-          })()
-        """);
-        htmlContent = htmlResult.toString();
-        captureMode = AppConstants.captureModeFull;
-        AppLogger.data('전체 HTML 추출 완료', operation: 'extract_html', value: '${htmlContent.length} characters');
-      } else {
-        // 1-B. 핵심 상품 정보만 추출
-        final htmlResult = await controller.runJavaScriptReturningResult("""
-          (() => {
-            // 쿠팡 상품 페이지의 핵심 섹션들 추출
-            const sections = [];
-            
-            // 1. 상품 ATF (Above The Fold) 영역
-            const prodAtf = document.querySelector('main .prod-atf, main div[class*="prod-atf"]');
-            if (prodAtf) {
-              sections.push('<div class="extracted-section" data-section="prod-atf">');
-              sections.push(prodAtf.outerHTML);
-              sections.push('</div>');
-            }
-            
-            // 2. 상품 상세 정보 영역
-            const prodDetail = document.querySelector('main .prod-detail, main div[class*="prod-detail"]');
-            if (prodDetail) {
-              sections.push('<div class="extracted-section" data-section="prod-detail">');
-              sections.push(prodDetail.outerHTML);
-              sections.push('</div>');
-            }
-            
-            // 3. 가격 정보 영역
-            const priceInfo = document.querySelector('.price-info, .prod-price, [class*="price"]');
-            if (priceInfo && !sections.some(s => s.includes(priceInfo.outerHTML))) {
-              sections.push('<div class="extracted-section" data-section="price-info">');
-              sections.push(priceInfo.outerHTML);
-              sections.push('</div>');
-            }
-            
-            // 4. 구매 버튼 영역
-            const buyButtons = document.querySelector('.prod-buy-options, .buy-options, [class*="buy"]');
-            if (buyButtons && !sections.some(s => s.includes(buyButtons.outerHTML))) {
-              sections.push('<div class="extracted-section" data-section="buy-options">');
-              sections.push(buyButtons.outerHTML);
-              sections.push('</div>');
-            }
-            
-            // 5. 상품 이미지 영역  
-            const prodImages = document.querySelector('.prod-image, .product-images, [class*="image"]');
-            if (prodImages && !sections.some(s => s.includes(prodImages.outerHTML))) {
-              sections.push('<div class="extracted-section" data-section="product-images">');
-              sections.push(prodImages.outerHTML);
-              sections.push('</div>');
-            }
-            
-            // 추출된 섹션들을 하나의 HTML로 결합
-            if (sections.length > 0) {
-              return '<!DOCTYPE html><html><head><title>쿠팡 상품 핵심 정보</title></head><body>' + 
-                     '<div class="coupang-extracted-content">' + 
-                     sections.join('\\n') + 
-                     '</div></body></html>';
-            } else {
-              // 핵심 섹션을 찾지 못한 경우 main 태그 전체
-              const mainContent = document.querySelector('main');
-              if (mainContent) {
-                return '<!DOCTYPE html><html><head><title>쿠팡 메인 콘텐츠</title></head><body>' +
-                       mainContent.outerHTML + 
-                       '</body></html>';
-              } else {
-                return '<!DOCTYPE html><html><head><title>추출 실패</title></head><body><p>상품 정보를 찾을 수 없습니다.</p></body></html>';
-              }
-            }
-          })()
-        """);
-        htmlContent = htmlResult.toString();
-        captureMode = AppConstants.captureModeProduct;
-        AppLogger.data('핵심 상품 정보 추출 완료', operation: 'extract_html', value: '${htmlContent.length} characters');
-      }
-      
-      // 2. 현재 URL 사용 (실시간으로 추적된 상태 사용)
-      final url = _currentUrl;
-      print('🔄 상태에서 가져온 현재 URL: $url');
-      
-      // 3. JavaScript로도 URL 확인 (검증용)
-      final jsUrlResult = await controller.runJavaScriptReturningResult("""
-        (() => {
-          return window.location.href;
-        })()
-      """);
-      final jsUrl = jsUrlResult.toString().replaceAll('"', '');
-      
-      // URL 일치 여부 확인
-      if (url != jsUrl) {
-        print('⚠️ URL 불일치 감지!');
-        print('  - 상태 URL: $url');
-        print('  - JS URL: $jsUrl');
-        print('  - JS URL을 사용합니다.');
-        // JavaScript에서 가져온 URL이 더 정확할 수 있으므로 업데이트
-        setState(() {
-          _currentUrl = jsUrl;
-        });
-      }
-      
-      // 4. 타임스탬프 생성
-      final timestamp = DateTimeHelper.format(DateTime.now());
-      final finalUrl = jsUrl.isNotEmpty ? jsUrl : url; // 최종 URL 결정
-      
-      AppLogger.data('HTML 문서 준비 완료', operation: 'summary', value: {
-        'size': '${htmlContent.length} characters',
-        'url': finalUrl,
-        'mode': captureMode
-      });
-      
-      // 5. 서버에 HTML 문서 업로드 (최종 URL 사용)
-      await _uploadHtmlToGist(htmlContent, finalUrl, timestamp, captureMode);
-      
-      // 6. 기존 가격 추출 로직도 유지 (백업용)
-      final priceResult = await controller.runJavaScriptReturningResult("""
-        (() => {
-          const quantityDiv = document.querySelector('#MWEB_PRODUCT_DETAIL_ATF_QUANTITY');
-          if (quantityDiv) {
-            const bold = quantityDiv.querySelector('b');
-            if (bold && bold.innerText) return bold.innerText;
-          }
-          const priceInfoDiv = document.querySelector('#MWEB_PRODUCT_DETAIL_ATF_PRICE_INFO');
-          if (priceInfoDiv) {
-            const span = priceInfoDiv.querySelector('span[class^="PriceInfo_finalPrice"]');
-            if (span && span.innerText) return span.innerText;
-          }
-          return '가격 없음';
-        })()
-      """);
-      
-      print('💰 추출된 가격 정보: $priceResult');
+      AppLogger.userAction('수동 캐치 완료', params: {'trigger': 'manual', 'url': _currentUrl});
       
     } catch (e) {
-      print('❌ HTML 추출 중 오류 발생: $e');
+      AppLogger.error('수동 HTML 캐치 중 오류 발생', error: e.toString());
+      UIHelper.showErrorSnack('HTML 캐치 중 오류가 발생했습니다.', context: context);
     }
     
-    // 6. 주문 페이지로 이동
+    // 주문 페이지로 이동
     UIHelper.navigateTo(const OrderPage(), context: context);
   }
-  
-  Future<void> _uploadHtmlToGist(String htmlContent, String url, String timestamp, String captureMode) async {
-    try {
-      print('📤 커스텀 서버에 HTML 문서 업로드 시도...');
-      
-      // 커스텀 서버로 직접 POST 전송 (추출 모드 정보 포함)
-      final success = await _uploadToCustomServer(htmlContent, url, timestamp, captureMode);
-      
-      if (!success) {
-        print('⚠️ 서버 업로드 실패, 로컬 저장으로 대체');
-        await _saveHtmlLocally(htmlContent, url, timestamp);
-      }
-      
-    } catch (e) {
-      print('💥 외부 저장 중 오류: $e');
-      await _saveHtmlLocally(htmlContent, url, timestamp);
-    }
+
+  @override
+  void dispose() {
+    _stopChangeDetection(); // 변화 감지 타이머 정리
+    super.dispose();
   }
-  
-  Future<bool> _uploadToCustomServer(String htmlContent, String url, String timestamp, String captureMode) async {
-    try {
-      const String serverUrl = AppConstants.postCoupangEndpoint;
-      AppLogger.network('서버 업로드 시작', method: 'POST', url: serverUrl);
-      
-      final data = {
-        'timestamp': timestamp,
-        'url': url,
-        'html_content': htmlContent,
-        'source': 'Raou_App_Coupang_Capture',
-        'app_version': '1.2.0',
-        'user_agent': 'RaouApp/1.2.0 (Flutter)',
-        'capture_mode': captureMode, // 새로 추가: 추출 모드 정보
-      };
-      
-      print('📊 업로드할 데이터 크기: ${jsonEncode(data).length} bytes');
-      print('🌐 대상 URL: $url');
-      print('⏰ 타임스탬프: $timestamp');
-      
-      final response = await http.post(
-        Uri.parse(serverUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'User-Agent': 'RaouApp/1.1.0 (Flutter)',
-        },
-        body: jsonEncode(data),
-      );
-      
-      print('📡 서버 응답 상태: ${response.statusCode}');
-      
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        print('✅ 커스텀 서버 업로드 성공!');
-        print('📄 서버 응답: ${response.body}');
-        
-        // 서버에서 응답이 JSON 형태인 경우 파싱
-        String responseMessage = '업로드 성공';
-        try {
-          final responseData = jsonDecode(response.body);
-          responseMessage = responseData['message'] ?? responseMessage;
-          
-          if (responseData['id'] != null) {
-            print('🆔 서버 할당 ID: ${responseData['id']}');
-          }
-        } catch (e) {
-          // JSON 파싱 실패해도 성공은 성공
-          print('📝 응답이 JSON이 아님: ${response.body}');
-        }
-        
-        if (mounted) {
-          UIHelper.showSuccessSnack(
-            'HTML 캡처가 gunsiya.com에 저장되었습니다!\n\n모드: ${captureMode == "full_html" ? "전체 HTML" : "핵심 정보만"}\n응답: $responseMessage\n\n시각: $timestamp',
-            context: context,
-            seconds: 6,
-          );
-        }
-        return true;
-      } else {
-        print('❌ 서버 업로드 실패: ${response.statusCode}');
-        print('📄 에러 응답: ${response.body}');
-        
-        if (mounted) {
-          UIHelper.showErrorSnack(
-            '서버 업로드 실패 (${response.statusCode})\n로컬 저장으로 대체됩니다.',
-            context: context,
-            seconds: 4,
-          );
-        }
-        return false;
-      }
-    } catch (e) {
-      print('❌ 커스텀 서버 업로드 중 예외 발생: $e');
-      
-      if (mounted) {
-        UIHelper.showErrorSnack(
-          '네트워크 오류: $e\n로컬 저장으로 대체됩니다.',
-          context: context,
-          seconds: 4,
-        );
-      }
-      return false;
-    }
+
+  // ============================================================================
+  // 네비게이션 액션 메서드들
+  // ============================================================================
+
+  void onHomePressed() {
+    AppLogger.userAction('홈 버튼 클릭');
+    controller.loadRequest(Uri.parse(AppConstants.coupangBaseUrl));
   }
-  
-  Future<void> _saveHtmlLocally(String htmlContent, String url, String timestamp) async {
-    try {
-      print('💾 로컬 저장 시도...');
-      
-      // 앱 내부 디렉토리에 임시 저장
-      // 실제 구현 시에는 path_provider 패키지 사용 권장
-      final fileName = 'coupang_html_$timestamp.txt';
-      
-      print('📁 로컬 파일명: $fileName');
-      print('📄 HTML 길이: ${htmlContent.length}');
-      print('🌐 URL: $url');
-      
-      // 사용자에게 로컬 저장 완료 메시지
-      if (mounted) {
-        UIHelper.showSnack(
-          'HTML 문서를 로컬에 임시 저장했습니다.',
-          context: context,
-          seconds: 3,
-        );
-      }
-    } catch (e) {
-      print('❌ 로컬 저장 실패: $e');
-    }
+
+  void onCoupangPressed() {
+    AppLogger.userAction('쿠팡 버튼 클릭');
+    controller.loadRequest(Uri.parse(AppConstants.coupangBaseUrl));
   }
 
   void onCartPressed() {

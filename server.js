@@ -38,7 +38,9 @@ app.post('/raou/post_coupang', async (req, res) => {
       source,
       app_version,
       user_agent,
-      capture_mode
+      capture_mode,
+      trigger,
+      page_details
     } = req.body;
     
     // 요청 데이터 검증
@@ -58,6 +60,20 @@ app.post('/raou/post_coupang', async (req, res) => {
     console.log(`  - 앱 버전: ${app_version}`);
     console.log(`  - User Agent: ${user_agent}`);
     console.log(`  - 캡처 모드: ${capture_mode || 'full_html'} ${capture_mode === 'product_sections' ? '📦 (핵심 정보만)' : '📄 (전체 HTML)'}`);
+    console.log(`  - 트리거: ${trigger || 'unknown'} ${trigger === 'page_loaded' ? '🔄 (페이지 로딩)' : trigger === 'content_changed' ? '⚡ (내용 변화)' : trigger === 'manual' ? '👆 (수동 캐치)' : '❓ (기타)'}`);
+    
+    if (page_details) {
+      console.log('📋 페이지 상세 정보:');
+      if (page_details.title) console.log(`  - 페이지 제목: ${page_details.title}`);
+      if (page_details.selected_options && page_details.selected_options.length > 0) {
+        console.log(`  - 선택된 옵션: ${page_details.selected_options.length}개`);
+        page_details.selected_options.forEach((option, index) => {
+          console.log(`    ${index + 1}. ${option.name}: ${option.value} (${option.text})`);
+        });
+      }
+      if (page_details.quantity) console.log(`  - 수량: ${page_details.quantity}`);
+      if (page_details.popup_visible !== undefined) console.log(`  - 팝업 표시: ${page_details.popup_visible ? '✅ 예' : '❌ 아니오'}`);
+    }
     
     // 파일명 생성 (타임스탬프 기반)
     const safeTimestamp = timestamp.replace(/[:\-\.]/g, '_');
@@ -115,7 +131,9 @@ app.post('/raou/post_coupang', async (req, res) => {
         source,
         app_version,
         user_agent,
-        capture_mode: capture_mode || 'full_html'
+        capture_mode: capture_mode || 'full_html',
+        trigger: trigger || 'unknown',
+        page_details: page_details || null
       },
       url_analysis: urlData,
       html_analysis: htmlAnalysis,
