@@ -5,100 +5,149 @@ import '../../viewmodels/auth_view_model.dart';
 import '../../models/cart_item.dart';
 import '../../shared/utils/ui_helper.dart';
 import '../../shared/constants/app_constants.dart';
+import '../../widgets/raou_navigation_bar.dart';
 import '../order/order_confirm_page.dart';
+import '../order/order_page.dart';
+import '../auth/profile_page.dart';
 
 class CartPage extends StatelessWidget {
   const CartPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // Custom header
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.inversePrimary,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.2),
-                spreadRadius: 1,
-                blurRadius: 3,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Cart',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Consumer<CartViewModel>(
-                builder: (context, cartViewModel, child) {
-                  if (cartViewModel.isNotEmpty) {
-                    return TextButton(
-                      onPressed: () => _showClearCartDialog(context),
-                      child: const Text('Clear All'),
-                    );
-                  }
-                  return const SizedBox.shrink();
-                },
-              ),
-            ],
-          ),
-        ),
-        // Body
-        Expanded(
-          child: Consumer<CartViewModel>(
-            builder: (context, cartViewModel, child) {
-              if (cartViewModel.isEmpty) {
-                return const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+    return SafeArea(
+      child: Scaffold(
+        body: Stack(
+          children: [
+            // Main Content Area
+            Column(
+              children: [
+                // Header with clear button
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppConstants.paddingM,
+                    vertical: AppConstants.paddingS,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Icon(
-                        Icons.shopping_cart_outlined,
-                        size: 80,
-                        color: Colors.grey,
-                      ),
-                      SizedBox(height: 16),
                       Text(
-                        'Your cart is empty',
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.grey,
+                        '장바구니',
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
+                      ),
+                      Consumer<CartViewModel>(
+                        builder: (context, cartViewModel, child) {
+                          if (cartViewModel.isNotEmpty) {
+                            return TextButton.icon(
+                              onPressed: () => _showClearCartDialog(context),
+                              icon: const Icon(Icons.clear_all, size: AppConstants.iconS),
+                              label: const Text('전체 삭제'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Theme.of(context).colorScheme.error,
+                              ),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        },
                       ),
                     ],
                   ),
-                );
-              }
+                ),
+                
+                // Content
+                Expanded(
+                  child: Consumer<CartViewModel>(
+                    builder: (context, cartViewModel, child) {
+                      if (cartViewModel.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(AppConstants.paddingL),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(AppConstants.radiusXL),
+                                ),
+                                child: Icon(
+                                  Icons.shopping_cart_outlined,
+                                  size: 64,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: AppConstants.paddingL),
+                              Text(
+                                '장바구니가 비어있습니다',
+                                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: AppConstants.paddingS),
+                              Text(
+                                '상품을 추가해보세요',
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
 
-              return Column(
-                children: [
-                  Expanded(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: cartViewModel.cartItems.length,
-                      itemBuilder: (context, index) {
-                        final cartItem = cartViewModel.cartItems[index];
-                        return CartItemCard(cartItem: cartItem);
-                      },
-                    ),
+                      return Column(
+                        children: [
+                          Expanded(
+                            child: ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(
+                                AppConstants.paddingM,
+                                0,
+                                AppConstants.paddingM,
+                                80, // 네비게이션 바 공간 확보
+                              ),
+                              itemCount: cartViewModel.cartItems.length,
+                              itemBuilder: (context, index) {
+                                final cartItem = cartViewModel.cartItems[index];
+                                return CartItemCard(cartItem: cartItem);
+                              },
+                            ),
+                          ),
+                          if (cartViewModel.isNotEmpty)
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 80), // 네비게이션 바 공간
+                              child: CartSummary(cartViewModel: cartViewModel),
+                            ),
+                        ],
+                      );
+                    },
                   ),
-                  CartSummary(cartViewModel: cartViewModel),
-                ],
-              );
-            },
-          ),
+                ),
+              ],
+            ),
+            
+            // Bottom Navigation Bar
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Consumer<CartViewModel>(
+                builder: (context, cartViewModel, child) {
+                  return RaouNavigationBar(
+                    onHomePressed: () => Navigator.pop(context),
+                    onCoupangPressed: () => Navigator.pop(context),
+                    onOrderPressed: () => UIHelper.navigateTo(const OrderPage(), context: context),
+                    onCartPressed: () {}, // 현재 페이지이므로 아무것도 하지 않음
+                    onProfilePressed: () => UIHelper.navigateTo(const ProfilePage(), context: context),
+                    cartItemCount: cartViewModel.itemCount,
+                  );
+                },
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
